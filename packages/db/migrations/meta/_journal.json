@@ -15,6 +15,13 @@
       "when": 1792375677073,
       "tag": "0001_grants_and_audit_chain",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1792377740921,
+      "tag": "0002_session_ended_immutable",
+      "breakpoints": true
     }
   ]
 }

@@ -1,7 +1,7 @@
 /* Runs against a real Postgres when SR_DB_TEST_URL names a superuser connection, e.g.
  * SR_DB_TEST_URL=postgres://signin_reports:signin_reports@localhost:5432/signin_reports
- * with `docker compose up postgres`. It applies the committed migrations to a throwaway
- * database and drops it afterwards. */
+ * with `docker compose up postgres`. It applies the committed migrations as sr_migrator to
+ * a throwaway database and drops it afterwards. Under CI a missing URL fails, never skips. */
 import { randomBytes } from 'node:crypto'
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
@@ -19,17 +19,22 @@ import {
 } from '../src/index.js'
 
 const adminUrl = process.env.SR_DB_TEST_URL
-const roles = ['sr_api', 'sr_report_worker', 'sr_mail_worker'] as const
+const roles = ['sr_migrator', 'sr_api', 'sr_report_worker', 'sr_mail_worker'] as const
 const migrationsFolder = join(import.meta.dirname, '..', 'migrations')
 
 it('the integration suite finds the committed migrations it applies', () => {
   expect(existsSync(join(migrationsFolder, 'meta', '_journal.json'))).toBe(true)
 })
 
+it('runs against real Postgres under CI instead of skipping', () => {
+  if (process.env.CI) expect(adminUrl, 'SR_DB_TEST_URL must be set when CI is').toBeDefined()
+})
+
 describe.skipIf(!adminUrl)('db against real Postgres', () => {
   const database = `sr_it_${randomBytes(6).toString('hex')}`
   let admin: pg.Client
   let client: pg.Client
+  let databaseUrl: string
 
   /* Runs one statement as the given role, inside a transaction that is always rolled back. */
   async function as(role: string, text: string, values: unknown[] = []) {
@@ -50,11 +55,20 @@ describe.skipIf(!adminUrl)('db against real Postgres', () => {
       if (rowCount === 0) await admin.query(`CREATE ROLE ${role} NOLOGIN`)
     }
     await admin.query(`CREATE DATABASE ${database}`)
+    await admin.query(`GRANT CREATE ON DATABASE ${database} TO sr_migrator`)
     const url = new URL(adminUrl!)
     url.pathname = `/${database}`
-    client = new pg.Client({ connectionString: url.toString() })
+    databaseUrl = url.toString()
+    client = new pg.Client({ connectionString: databaseUrl })
     await client.connect()
-    await migrate(drizzle(client), { migrationsFolder })
+    await client.query('GRANT CREATE ON SCHEMA public TO sr_migrator')
+    /* As in production, the migrator owns what the migrations create and gives the grants. */
+    await client.query('SET ROLE sr_migrator')
+    try {
+      await migrate(drizzle(client), { migrationsFolder })
+    } finally {
+      await client.query('RESET ROLE')
+    }
   })
 
   afterAll(async () => {
@@ -62,6 +76,22 @@ describe.skipIf(!adminUrl)('db against real Postgres', () => {
     await admin?.query(`DROP DATABASE IF EXISTS ${database}`)
     await admin?.end()
   })
+
+  async function readAuditChain(): Promise<StoredAuditEntry[]> {
+    const { rows } = await client.query(
+      'SELECT seq, occurred_at, event_type, actor_oid, trace_id, reason, prev_hash, hash FROM audit_event ORDER BY seq',
+    )
+    return rows.map((row) => ({
+      seq: Number(row.seq),
+      occurredAt: row.occurred_at,
+      type: row.event_type,
+      actorOid: row.actor_oid,
+      traceId: row.trace_id,
+      reason: row.reason,
+      prevHash: row.prev_hash,
+      hash: row.hash,
+    }))
+  }
 
   const createdAt = new Date('2026-10-19T08:00:00.000Z')
   const session = (sessionId: string, overrides: Partial<NewSession> = {}): NewSession => ({
@@ -128,6 +158,24 @@ describe.skipIf(!adminUrl)('db against real Postgres', () => {
     expect(await store.end('cookie-logout', now, 'logout')).toBeNull()
   })
 
+  it('an ended session cannot be revived, even by the API role', async () => {
+    const store = createSessionStore(client)
+    await store.create(session('cookie-revive'))
+    const now = new Date('2026-10-19T08:05:00.000Z')
+    expect(await store.end('cookie-revive', now, 'logout')).toBe('kc-session-1')
+    await client.query('SET ROLE sr_api')
+    try {
+      await expect(
+        client.query('UPDATE session SET ended_at = NULL, end_reason = NULL WHERE id_hash = $1', [
+          hashSessionId('cookie-revive'),
+        ]),
+      ).rejects.toThrow(/has ended/)
+      expect(await store.findLive('cookie-revive', now)).toBeNull()
+    } finally {
+      await client.query('RESET ROLE')
+    }
+  })
+
   it('rotates at login: the replaced session ends', async () => {
     const store = createSessionStore(client)
     await store.create(session('cookie-before'))
@@ -189,19 +237,7 @@ describe.skipIf(!adminUrl)('db against real Postgres', () => {
     } finally {
       await client.query('RESET ROLE')
     }
-    const { rows } = await client.query(
-      'SELECT seq, occurred_at, event_type, actor_oid, trace_id, reason, prev_hash, hash FROM audit_event ORDER BY seq',
-    )
-    const entries: StoredAuditEntry[] = rows.map((row) => ({
-      seq: Number(row.seq),
-      occurredAt: row.occurred_at,
-      type: row.event_type,
-      actorOid: row.actor_oid,
-      traceId: row.trace_id,
-      reason: row.reason,
-      prevHash: row.prev_hash,
-      hash: row.hash,
-    }))
+    const entries = await readAuditChain()
     expect(entries.map((entry) => entry.type)).toEqual(['access_denied', 'sign_in_failed'])
     expect(verifyAuditChain(entries)).toEqual({ ok: true, entries: 2 })
   })
@@ -216,6 +252,36 @@ describe.skipIf(!adminUrl)('db against real Postgres', () => {
     )
     expect(Number(rows[0].seq)).not.toBe(999)
     expect(rows[0].length).toBe(32)
+  })
+
+  it('chains audit events written concurrently from two API connections without a gap', async () => {
+    const writers = [new pg.Client({ connectionString: databaseUrl }), new pg.Client({ connectionString: databaseUrl })]
+    try {
+      for (const writer of writers) {
+        await writer.connect()
+        await writer.query('SET ROLE sr_api')
+      }
+      const before = (await readAuditChain()).length
+      await Promise.all(
+        writers.flatMap((writer, w) =>
+          Array.from({ length: 20 }, (_, i) =>
+            recordAuditEvent(writer, {
+              occurredAt: new Date(Date.UTC(2026, 9, 19, 9, w, i)),
+              type: 'access_denied',
+              actorOid: null,
+              traceId: '4bf92f3577b34da6a3ce929d0e0e4736',
+              reason: `writer_${w}_${i}`,
+            }),
+          ),
+        ),
+      )
+      const entries = await readAuditChain()
+      expect(entries).toHaveLength(before + 40)
+      expect(entries.map((entry) => entry.seq)).toEqual(entries.map((_, index) => index + 1))
+      expect(verifyAuditChain(entries)).toEqual({ ok: true, entries: entries.length })
+    } finally {
+      await Promise.all(writers.map((writer) => writer.end()))
+    }
   })
 
   it('refuses to change or remove an audit event even for its owner', async () => {
