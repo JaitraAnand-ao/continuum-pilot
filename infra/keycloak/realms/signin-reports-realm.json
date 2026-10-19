@@ -1,0 +1,348 @@
+{
+  "realm": "signin-reports",
+  "displayName": "Entra Sign-In Reports",
+  "enabled": true,
+  "sslRequired": "all",
+  "registrationAllowed": false,
+  "registrationEmailAsUsername": false,
+  "resetPasswordAllowed": false,
+  "rememberMe": false,
+  "editUsernameAllowed": false,
+  "loginWithEmailAllowed": false,
+  "duplicateEmailsAllowed": true,
+  "verifyEmail": false,
+  "bruteForceProtected": true,
+  "ssoSessionIdleTimeout": 900,
+  "ssoSessionMaxLifespan": 28800,
+  "clientSessionIdleTimeout": 900,
+  "clientSessionMaxLifespan": 28800,
+  "offlineSessionIdleTimeout": 900,
+  "offlineSessionMaxLifespanEnabled": true,
+  "offlineSessionMaxLifespan": 28800,
+  "accessTokenLifespan": 300,
+  "accessCodeLifespan": 60,
+  "accessCodeLifespanLogin": 600,
+  "revokeRefreshToken": true,
+  "refreshTokenMaxReuse": 0,
+  "eventsEnabled": true,
+  "eventsExpiration": 7776000,
+  "eventsListeners": ["jboss-logging"],
+  "enabledEventTypes": [
+    "LOGIN",
+    "LOGIN_ERROR",
+    "LOGOUT",
+    "LOGOUT_ERROR",
+    "CODE_TO_TOKEN",
+    "CODE_TO_TOKEN_ERROR",
+    "REFRESH_TOKEN",
+    "REFRESH_TOKEN_ERROR",
+    "IDENTITY_PROVIDER_LOGIN",
+    "IDENTITY_PROVIDER_LOGIN_ERROR",
+    "IDENTITY_PROVIDER_FIRST_LOGIN",
+    "IDENTITY_PROVIDER_FIRST_LOGIN_ERROR",
+    "IDENTITY_PROVIDER_POST_LOGIN",
+    "IDENTITY_PROVIDER_POST_LOGIN_ERROR"
+  ],
+  "adminEventsEnabled": true,
+  "adminEventsDetailsEnabled": false,
+  "users": [],
+  "roles": {
+    "realm": [
+      {
+        "name": "reader",
+        "description": "Reads sign-in reports. Granted only by the SignInReports.Reader Entra app role.",
+        "composite": false,
+        "clientRole": false
+      },
+      {
+        "name": "report-admin",
+        "description": "Administers reports. Granted only by the SignInReports.Admin Entra app role.",
+        "composite": false,
+        "clientRole": false
+      },
+      {
+        "name": "default-roles-signin-reports",
+        "description": "Holds no report role: access comes only from Entra app roles.",
+        "composite": false,
+        "clientRole": false
+      }
+    ]
+  },
+  "defaultRole": {
+    "name": "default-roles-signin-reports",
+    "composite": false,
+    "clientRole": false
+  },
+  "browserFlow": "entra only browser",
+  "directGrantFlow": "local sign-in disabled",
+  "registrationFlow": "local sign-in disabled",
+  "authenticationFlows": [
+    {
+      "alias": "entra only browser",
+      "description": "An existing session, otherwise straight to Entra ID. No local password form.",
+      "providerId": "basic-flow",
+      "topLevel": true,
+      "builtIn": false,
+      "authenticationExecutions": [
+        {
+          "authenticator": "auth-cookie",
+          "authenticatorFlow": false,
+          "requirement": "ALTERNATIVE",
+          "priority": 10,
+          "userSetupAllowed": false
+        },
+        {
+          "authenticator": "identity-provider-redirector",
+          "authenticatorConfig": "entra redirector",
+          "authenticatorFlow": false,
+          "requirement": "ALTERNATIVE",
+          "priority": 20,
+          "userSetupAllowed": false
+        }
+      ]
+    },
+    {
+      "alias": "entra first broker login",
+      "description": "Creates the user from the Entra object id; never reviews a profile or links by e-mail.",
+      "providerId": "basic-flow",
+      "topLevel": true,
+      "builtIn": false,
+      "authenticationExecutions": [
+        {
+          "authenticator": "idp-create-user-if-unique",
+          "authenticatorFlow": false,
+          "requirement": "REQUIRED",
+          "priority": 10,
+          "userSetupAllowed": false
+        }
+      ]
+    },
+    {
+      "alias": "local sign-in disabled",
+      "description": "Bound to direct grant and registration: every attempt is denied. Credential reset is closed by resetPasswordAllowed=false.",
+      "providerId": "basic-flow",
+      "topLevel": true,
+      "builtIn": false,
+      "authenticationExecutions": [
+        {
+          "authenticator": "deny-access-authenticator",
+          "authenticatorFlow": false,
+          "requirement": "REQUIRED",
+          "priority": 10,
+          "userSetupAllowed": false
+        }
+      ]
+    }
+  ],
+  "authenticatorConfig": [
+    {
+      "alias": "entra redirector",
+      "config": {
+        "defaultProvider": "entra"
+      }
+    }
+  ],
+  "identityProviders": [
+    {
+      "alias": "entra",
+      "displayName": "Microsoft",
+      "providerId": "oidc",
+      "enabled": true,
+      "hideOnLogin": true,
+      "trustEmail": false,
+      "storeToken": false,
+      "addReadTokenRoleOnCreate": false,
+      "authenticateByDefault": false,
+      "linkOnly": false,
+      "firstBrokerLoginFlowAlias": "entra first broker login",
+      "config": {
+        "issuer": "${ENTRA_ISSUER}",
+        "authorizationUrl": "${ENTRA_AUTHORIZATION_URL}",
+        "tokenUrl": "${ENTRA_TOKEN_URL}",
+        "jwksUrl": "${ENTRA_JWKS_URL}",
+        "logoutUrl": "${ENTRA_LOGOUT_URL}",
+        "clientId": "${ENTRA_CLIENT_ID}",
+        "clientSecret": "${vault.entra_client_secret}",
+        "clientAuthMethod": "client_secret_post",
+        "defaultScope": "openid profile",
+        "syncMode": "FORCE",
+        "validateSignature": "true",
+        "useJwksUrl": "true",
+        "pkceEnabled": "true",
+        "pkceMethod": "S256",
+        "disableUserInfo": "true",
+        "backchannelSupported": "false",
+        "filteredByClaim": "true",
+        "claimFilterName": "tid",
+        "claimFilterValue": "^${ENTRA_TENANT_ID}$",
+        "forwardParameters": "max_age,prompt",
+        "loginHint": "true",
+        "allowedClockSkew": "30"
+      }
+    }
+  ],
+  "identityProviderMappers": [
+    {
+      "name": "username from oid",
+      "identityProviderAlias": "entra",
+      "identityProviderMapper": "oidc-username-idp-mapper",
+      "config": {
+        "syncMode": "FORCE",
+        "template": "${CLAIM.oid}",
+        "target": "LOCAL"
+      }
+    },
+    {
+      "name": "tid",
+      "identityProviderAlias": "entra",
+      "identityProviderMapper": "oidc-user-attribute-idp-mapper",
+      "config": {
+        "syncMode": "FORCE",
+        "claim": "tid",
+        "user.attribute": "tid"
+      }
+    },
+    {
+      "name": "account name",
+      "identityProviderAlias": "entra",
+      "identityProviderMapper": "oidc-user-attribute-idp-mapper",
+      "config": {
+        "syncMode": "FORCE",
+        "claim": "preferred_username",
+        "user.attribute": "entra_upn"
+      }
+    },
+    {
+      "name": "display name",
+      "identityProviderAlias": "entra",
+      "identityProviderMapper": "oidc-user-attribute-idp-mapper",
+      "config": {
+        "syncMode": "FORCE",
+        "claim": "name",
+        "user.attribute": "entra_name"
+      }
+    },
+    {
+      "name": "reader app role",
+      "identityProviderAlias": "entra",
+      "identityProviderMapper": "oidc-role-idp-mapper",
+      "config": {
+        "syncMode": "FORCE",
+        "claim": "roles",
+        "claim.value": "SignInReports.Reader",
+        "role": "reader"
+      }
+    },
+    {
+      "name": "report admin app role",
+      "identityProviderAlias": "entra",
+      "identityProviderMapper": "oidc-role-idp-mapper",
+      "config": {
+        "syncMode": "FORCE",
+        "claim": "roles",
+        "claim.value": "SignInReports.Admin",
+        "role": "report-admin"
+      }
+    }
+  ],
+  "clients": [
+    {
+      "clientId": "signin-reports-bff",
+      "name": "Entra Sign-In Reports BFF",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "clientAuthenticatorType": "client-secret",
+      "secret": "${KEYCLOAK_BFF_CLIENT_SECRET}",
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false,
+      "frontchannelLogout": false,
+      "consentRequired": false,
+      "fullScopeAllowed": false,
+      "redirectUris": ["${SR_PUBLIC_ORIGIN}/auth/callback"],
+      "webOrigins": [],
+      "attributes": {
+        "pkce.code.challenge.method": "S256",
+        "post.logout.redirect.uris": "${SR_PUBLIC_ORIGIN}/signin",
+        "use.refresh.tokens": "true",
+        "oauth2.device.authorization.grant.enabled": "false",
+        "oidc.ciba.grant.enabled": "false",
+        "backchannel.logout.session.required": "true",
+        "id.token.signed.response.alg": "PS256",
+        "access.token.signed.response.alg": "PS256"
+      },
+      "defaultClientScopes": ["basic", "acr"],
+      "optionalClientScopes": [],
+      "protocolMappers": [
+        {
+          "name": "roles",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-realm-role-mapper",
+          "config": {
+            "claim.name": "roles",
+            "multivalued": "true",
+            "jsonType.label": "String",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "false",
+            "introspection.token.claim": "true"
+          }
+        },
+        {
+          "name": "tid",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "config": {
+            "user.attribute": "tid",
+            "claim.name": "tid",
+            "jsonType.label": "String",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "false"
+          }
+        },
+        {
+          "name": "account name",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "config": {
+            "user.attribute": "entra_upn",
+            "claim.name": "preferred_username",
+            "jsonType.label": "String",
+            "id.token.claim": "true",
+            "access.token.claim": "false",
+            "userinfo.token.claim": "false"
+          }
+        },
+        {
+          "name": "display name",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "config": {
+            "user.attribute": "entra_name",
+            "claim.name": "name",
+            "jsonType.label": "String",
+            "id.token.claim": "true",
+            "access.token.claim": "false",
+            "userinfo.token.claim": "false"
+          }
+        }
+      ]
+    }
+  ],
+  "components": {
+    "org.keycloak.userprofile.UserProfileProvider": [
+      {
+        "providerId": "declarative-user-profile",
+        "subComponents": {},
+        "config": {
+          "kc.user.profile.config": [
+            "{\"unmanagedAttributePolicy\":\"ADMIN_VIEW\",\"attributes\":[{\"name\":\"username\",\"displayName\":\"${username}\",\"permissions\":{\"view\":[\"admin\"],\"edit\":[\"admin\"]},\"multivalued\":false},{\"name\":\"email\",\"displayName\":\"${email}\",\"permissions\":{\"view\":[\"admin\"],\"edit\":[\"admin\"]},\"multivalued\":false},{\"name\":\"firstName\",\"displayName\":\"${firstName}\",\"permissions\":{\"view\":[\"admin\"],\"edit\":[\"admin\"]},\"multivalued\":false},{\"name\":\"lastName\",\"displayName\":\"${lastName}\",\"permissions\":{\"view\":[\"admin\"],\"edit\":[\"admin\"]},\"multivalued\":false}],\"groups\":[]}"
+          ]
+        }
+      }
+    ]
+  }
+}

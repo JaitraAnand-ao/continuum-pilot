@@ -1,0 +1,180 @@
+{
+  "realm": "fake-entra",
+  "displayName": "Fake Entra ID (local and CI only)",
+  "enabled": true,
+  "sslRequired": "external",
+  "registrationAllowed": false,
+  "resetPasswordAllowed": false,
+  "rememberMe": false,
+  "ssoSessionIdleTimeout": 3600,
+  "ssoSessionMaxLifespan": 86400,
+  "roles": {
+    "client": {
+      "signin-reports-broker": [
+        {
+          "name": "SignInReports.Reader",
+          "description": "The reader app role",
+          "composite": false,
+          "clientRole": true
+        },
+        {
+          "name": "SignInReports.Admin",
+          "description": "The report administrator app role",
+          "composite": false,
+          "clientRole": true
+        }
+      ]
+    }
+  },
+  "clients": [
+    {
+      "clientId": "signin-reports-broker",
+      "name": "Entra Sign-In Reports (app registration stand-in)",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "clientAuthenticatorType": "client-secret",
+      "secret": "${ENTRA_CLIENT_SECRET}",
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false,
+      "consentRequired": false,
+      "redirectUris": ["${KEYCLOAK_PUBLIC_ORIGIN}/realms/signin-reports/broker/entra/endpoint"],
+      "webOrigins": [],
+      "attributes": {
+        "pkce.code.challenge.method": "S256",
+        "post.logout.redirect.uris": "${KEYCLOAK_PUBLIC_ORIGIN}/realms/signin-reports/broker/entra/endpoint/logout_response"
+      },
+      "defaultClientScopes": ["basic", "acr", "profile", "email"],
+      "optionalClientScopes": [],
+      "protocolMappers": [
+        {
+          "name": "app roles",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-client-role-mapper",
+          "config": {
+            "usermodel.clientRoleMapping.clientId": "signin-reports-broker",
+            "claim.name": "roles",
+            "multivalued": "true",
+            "jsonType.label": "String",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "true"
+          }
+        },
+        {
+          "name": "tid",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "config": {
+            "user.attribute": "tid",
+            "claim.name": "tid",
+            "jsonType.label": "String",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "true"
+          }
+        },
+        {
+          "name": "oid",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "config": {
+            "user.attribute": "oid",
+            "claim.name": "oid",
+            "jsonType.label": "String",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "true"
+          }
+        }
+      ]
+    }
+  ],
+  "users": [
+    {
+      "username": "reader",
+      "enabled": true,
+      "email": "reader@contoso.test",
+      "emailVerified": true,
+      "firstName": "Riley",
+      "lastName": "Reader",
+      "attributes": {
+        "tid": ["4f1b2c3d-5e6f-4a7b-8c9d-0e1f2a3b4c5d"],
+        "oid": ["0b6a1c52-3d4e-4f60-8a71-92b3c4d5e601"]
+      },
+      "credentials": [{ "type": "password", "value": "${FAKE_ENTRA_USER_PASSWORD}", "temporary": false }],
+      "clientRoles": { "signin-reports-broker": ["SignInReports.Reader"] }
+    },
+    {
+      "username": "reader-admin",
+      "enabled": true,
+      "email": "reader-admin@contoso.test",
+      "emailVerified": true,
+      "firstName": "Bailey",
+      "lastName": "Both",
+      "attributes": {
+        "tid": ["4f1b2c3d-5e6f-4a7b-8c9d-0e1f2a3b4c5d"],
+        "oid": ["0b6a1c52-3d4e-4f60-8a71-92b3c4d5e602"]
+      },
+      "credentials": [{ "type": "password", "value": "${FAKE_ENTRA_USER_PASSWORD}", "temporary": false }],
+      "clientRoles": { "signin-reports-broker": ["SignInReports.Reader", "SignInReports.Admin"] }
+    },
+    {
+      "username": "admin",
+      "enabled": true,
+      "email": "admin@contoso.test",
+      "emailVerified": true,
+      "firstName": "Alex",
+      "lastName": "Admin",
+      "attributes": {
+        "tid": ["4f1b2c3d-5e6f-4a7b-8c9d-0e1f2a3b4c5d"],
+        "oid": ["0b6a1c52-3d4e-4f60-8a71-92b3c4d5e603"]
+      },
+      "credentials": [{ "type": "password", "value": "${FAKE_ENTRA_USER_PASSWORD}", "temporary": false }],
+      "clientRoles": { "signin-reports-broker": ["SignInReports.Admin"] }
+    },
+    {
+      "username": "outsider",
+      "enabled": true,
+      "email": "outsider@contoso.test",
+      "emailVerified": true,
+      "firstName": "Oakley",
+      "lastName": "Outsider",
+      "attributes": {
+        "tid": ["4f1b2c3d-5e6f-4a7b-8c9d-0e1f2a3b4c5d"],
+        "oid": ["0b6a1c52-3d4e-4f60-8a71-92b3c4d5e604"]
+      },
+      "credentials": [{ "type": "password", "value": "${FAKE_ENTRA_USER_PASSWORD}", "temporary": false }],
+      "clientRoles": { "signin-reports-broker": [] }
+    },
+    {
+      "username": "other-tenant",
+      "enabled": true,
+      "email": "reader@fabrikam.test",
+      "emailVerified": true,
+      "firstName": "Frankie",
+      "lastName": "Foreign",
+      "attributes": {
+        "tid": ["9e8d7c6b-5a49-4382-9170-6f5e4d3c2b1a"],
+        "oid": ["0b6a1c52-3d4e-4f60-8a71-92b3c4d5e605"]
+      },
+      "credentials": [{ "type": "password", "value": "${FAKE_ENTRA_USER_PASSWORD}", "temporary": false }],
+      "clientRoles": { "signin-reports-broker": ["SignInReports.Reader"] }
+    }
+  ],
+  "components": {
+    "org.keycloak.userprofile.UserProfileProvider": [
+      {
+        "providerId": "declarative-user-profile",
+        "subComponents": {},
+        "config": {
+          "kc.user.profile.config": [
+            "{\"unmanagedAttributePolicy\":\"ENABLED\",\"attributes\":[{\"name\":\"username\",\"displayName\":\"${username}\",\"permissions\":{\"view\":[\"admin\",\"user\"],\"edit\":[\"admin\"]},\"multivalued\":false},{\"name\":\"email\",\"displayName\":\"${email}\",\"permissions\":{\"view\":[\"admin\",\"user\"],\"edit\":[\"admin\"]},\"multivalued\":false},{\"name\":\"firstName\",\"displayName\":\"${firstName}\",\"permissions\":{\"view\":[\"admin\",\"user\"],\"edit\":[\"admin\"]},\"multivalued\":false},{\"name\":\"lastName\",\"displayName\":\"${lastName}\",\"permissions\":{\"view\":[\"admin\",\"user\"],\"edit\":[\"admin\"]},\"multivalued\":false}],\"groups\":[]}"
+          ]
+        }
+      }
+    ]
+  }
+}
