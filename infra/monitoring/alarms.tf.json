@@ -1,0 +1,48 @@
+{
+  "resource": {
+    "aws_sns_topic": {
+      "alarms": {
+        "name": "signin-reports-alarms",
+        "kms_master_key_id": "${aws_kms_key.monitoring.arn}"
+      }
+    },
+    "aws_cloudwatch_metric_alarm": {
+      "no_complete_report_by_0730": {
+        "alarm_name": "signin-reports-no-complete-report-by-0730-utc",
+        "alarm_description": "ST-2 AC-6: no complete report exists for yesterday (UTC) at or after 07:30 UTC. Watches SigninReports/CompleteReportLagDays from the report worker (see metrics.json); a lag above 1 day after 07:30 UTC, or no data at all, is in alarm.",
+        "comparison_operator": "GreaterThanOrEqualToThreshold",
+        "threshold": 1,
+        "evaluation_periods": 1,
+        "datapoints_to_alarm": 1,
+        "treat_missing_data": "breaching",
+        "alarm_actions": ["${aws_sns_topic.alarms.arn}"],
+        "ok_actions": ["${aws_sns_topic.alarms.arn}"],
+        "metric_query": [
+          {
+            "id": "lag",
+            "return_data": false,
+            "metric": {
+              "namespace": "SigninReports",
+              "metric_name": "CompleteReportLagDays",
+              "dimensions": { "Service": "report-worker" },
+              "period": 60,
+              "stat": "Maximum"
+            }
+          },
+          {
+            "id": "lagfilled",
+            "return_data": false,
+            "label": "Lag, a silent worker counted as no report",
+            "expression": "FILL(lag, 99)"
+          },
+          {
+            "id": "missing",
+            "return_data": true,
+            "label": "No complete report for yesterday after 07:30 UTC",
+            "expression": "IF((HOUR(lagfilled) * 60 + MINUTE(lagfilled)) >= 450 AND lagfilled > 1, 1, 0)"
+          }
+        ]
+      }
+    }
+  }
+}

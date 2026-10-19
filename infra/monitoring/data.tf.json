@@ -1,0 +1,7 @@
+{
+  "data": {
+    "aws_partition": { "current": {} },
+    "aws_region": { "current": {} },
+    "aws_caller_identity": { "current": {} }
+  }
+}

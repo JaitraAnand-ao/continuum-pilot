@@ -1,0 +1,13 @@
+{
+  "$comment": "CMP-11 metric contract: what the workers emit (as CloudWatch EMF) and the alarms watch. A worker part emits exactly these names; the alarms in alarms.tf.json reference them.",
+  "namespace": "SigninReports",
+  "metrics": {
+    "completeReportLag": {
+      "name": "CompleteReportLagDays",
+      "unit": "Count",
+      "dimensions": { "Service": "report-worker" },
+      "periodSeconds": 60,
+      "description": "Emitted once a minute by the report worker: whole UTC days between today and the report date of the latest report published complete (incomplete and not-generated days do not count); 99 when none exists. Healthy is 1 after the 02:00 UTC run, 2 before it."
+    }
+  }
+}

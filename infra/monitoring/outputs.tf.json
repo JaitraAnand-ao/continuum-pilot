@@ -1,0 +1,9 @@
+{
+  "output": {
+    "monitoring_kms_key_arn": { "value": "${aws_kms_key.monitoring.arn}" },
+    "report_worker_log_group_name": { "value": "${aws_cloudwatch_log_group.report_worker.name}" },
+    "audit_mirror_log_group_name": { "value": "${aws_cloudwatch_log_group.audit_mirror.name}" },
+    "alarm_topic_arn": { "value": "${aws_sns_topic.alarms.arn}" },
+    "no_complete_report_alarm_arn": { "value": "${aws_cloudwatch_metric_alarm.no_complete_report_by_0730.arn}" }
+  }
+}

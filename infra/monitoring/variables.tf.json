@@ -1,0 +1,24 @@
+{
+  "variable": {
+    "region": {
+      "type": "string",
+      "description": "AWS region, commercial US or GovCloud (e.g. us-gov-west-1).",
+      "validation": [
+        {
+          "condition": "${can(regex(\"^us-(gov-)?[a-z]+-[0-9]$\", var.region))}",
+          "error_message": "The region must be a US commercial or aws-us-gov region."
+        }
+      ]
+    },
+    "report_worker_log_retention_days": {
+      "type": "number",
+      "description": "Retention of the report worker's operational logs.",
+      "default": 90
+    },
+    "audit_mirror_protected_role_names": {
+      "type": "list(string)",
+      "description": "IAM roles (operators, deployers, services) denied deleting or shortening the audit mirror.",
+      "default": []
+    }
+  }
+}

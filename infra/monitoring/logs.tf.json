@@ -1,0 +1,17 @@
+{
+  "resource": {
+    "aws_cloudwatch_log_group": {
+      "report_worker": {
+        "name": "/signin-reports/report-worker",
+        "retention_in_days": "${var.report_worker_log_retention_days}",
+        "kms_key_id": "${aws_kms_key.monitoring.arn}"
+      },
+      "audit_mirror": {
+        "name": "/signin-reports/audit-mirror",
+        "retention_in_days": 400,
+        "kms_key_id": "${aws_kms_key.monitoring.arn}",
+        "lifecycle": { "prevent_destroy": true }
+      }
+    }
+  }
+}
