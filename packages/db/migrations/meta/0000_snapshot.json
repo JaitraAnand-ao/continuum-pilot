@@ -1,0 +1,301 @@
+{
+  "id": "fea1b004-2492-420c-98b1-ddcfcd7157af",
+  "prevId": "00000000-0000-0000-0000-000000000000",
+  "version": "7",
+  "dialect": "postgresql",
+  "tables": {
+    "public.audit_event": {
+      "name": "audit_event",
+      "schema": "",
+      "columns": {
+        "seq": {
+          "name": "seq",
+          "type": "bigint",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "occurred_at": {
+          "name": "occurred_at",
+          "type": "timestamp (3) with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "event_type": {
+          "name": "event_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "actor_oid": {
+          "name": "actor_oid",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "trace_id": {
+          "name": "trace_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "reason": {
+          "name": "reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "prev_hash": {
+          "name": "prev_hash",
+          "type": "bytea",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "hash": {
+          "name": "hash",
+          "type": "bytea",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {
+        "audit_event_actor_oid_idx": {
+          "name": "audit_event_actor_oid_idx",
+          "columns": [
+            {
+              "expression": "actor_oid",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "audit_event_occurred_at_idx": {
+          "name": "audit_event_occurred_at_idx",
+          "columns": [
+            {
+              "expression": "occurred_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "audit_event_hash_unique": {
+          "name": "audit_event_hash_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "hash"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "audit_event_type_known": {
+          "name": "audit_event_type_known",
+          "value": "\"audit_event\".\"event_type\" IN ('access_denied', 'sign_in', 'sign_in_failed', 'sign_out', 'session_expired')"
+        },
+        "audit_event_trace_id_w3c": {
+          "name": "audit_event_trace_id_w3c",
+          "value": "\"audit_event\".\"trace_id\" ~ '^[0-9a-f]{32}$'"
+        },
+        "audit_event_reason_code": {
+          "name": "audit_event_reason_code",
+          "value": "\"audit_event\".\"reason\" ~ '^[A-Za-z0-9_.-]{1,64}$'"
+        },
+        "audit_event_hashes_sha256": {
+          "name": "audit_event_hashes_sha256",
+          "value": "octet_length(\"audit_event\".\"prev_hash\") = 32 AND octet_length(\"audit_event\".\"hash\") = 32"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.session": {
+      "name": "session",
+      "schema": "",
+      "columns": {
+        "id_hash": {
+          "name": "id_hash",
+          "type": "bytea",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "subject_oid": {
+          "name": "subject_oid",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "account_name": {
+          "name": "account_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "roles": {
+          "name": "roles",
+          "type": "text[]",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "refresh_token_ciphertext": {
+          "name": "refresh_token_ciphertext",
+          "type": "bytea",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "refresh_token_iv": {
+          "name": "refresh_token_iv",
+          "type": "bytea",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "refresh_token_tag": {
+          "name": "refresh_token_tag",
+          "type": "bytea",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "idp_session_id": {
+          "name": "idp_session_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp (3) with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "last_seen_at": {
+          "name": "last_seen_at",
+          "type": "timestamp (3) with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "idle_expires_at": {
+          "name": "idle_expires_at",
+          "type": "timestamp (3) with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "absolute_expires_at": {
+          "name": "absolute_expires_at",
+          "type": "timestamp (3) with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "ended_at": {
+          "name": "ended_at",
+          "type": "timestamp (3) with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "end_reason": {
+          "name": "end_reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "session_subject_oid_idx": {
+          "name": "session_subject_oid_idx",
+          "columns": [
+            {
+              "expression": "subject_oid",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "session_absolute_expires_at_idx": {
+          "name": "session_absolute_expires_at_idx",
+          "columns": [
+            {
+              "expression": "absolute_expires_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "session_id_hash_sha256": {
+          "name": "session_id_hash_sha256",
+          "value": "octet_length(\"session\".\"id_hash\") = 32"
+        },
+        "session_refresh_token_iv_96_bits": {
+          "name": "session_refresh_token_iv_96_bits",
+          "value": "octet_length(\"session\".\"refresh_token_iv\") = 12"
+        },
+        "session_refresh_token_tag_128_bits": {
+          "name": "session_refresh_token_tag_128_bits",
+          "value": "octet_length(\"session\".\"refresh_token_tag\") = 16"
+        },
+        "session_refresh_token_ciphertext_present": {
+          "name": "session_refresh_token_ciphertext_present",
+          "value": "octet_length(\"session\".\"refresh_token_ciphertext\") > 0"
+        },
+        "session_roles_known": {
+          "name": "session_roles_known",
+          "value": "\"session\".\"roles\" <@ ARRAY['reader', 'report_admin']::text[]"
+        },
+        "session_absolute_at_most_8_hours": {
+          "name": "session_absolute_at_most_8_hours",
+          "value": "\"session\".\"absolute_expires_at\" <= \"session\".\"created_at\" + interval '8 hours'"
+        },
+        "session_last_seen_after_created": {
+          "name": "session_last_seen_after_created",
+          "value": "\"session\".\"last_seen_at\" >= \"session\".\"created_at\""
+        },
+        "session_idle_at_most_15_minutes": {
+          "name": "session_idle_at_most_15_minutes",
+          "value": "\"session\".\"idle_expires_at\" <= least(\"session\".\"absolute_expires_at\", \"session\".\"last_seen_at\" + interval '15 minutes')"
+        },
+        "session_end_reason_known": {
+          "name": "session_end_reason_known",
+          "value": "(\"session\".\"ended_at\" IS NULL AND \"session\".\"end_reason\" IS NULL) OR (\"session\".\"ended_at\" IS NOT NULL AND \"session\".\"end_reason\" IN ('logout', 'idle', 'absolute', 'rotated'))"
+        }
+      },
+      "isRLSEnabled": false
+    }
+  },
+  "enums": {},
+  "schemas": {},
+  "sequences": {},
+  "roles": {},
+  "policies": {},
+  "views": {},
+  "_meta": {
+    "columns": {},
+    "schemas": {},
+    "tables": {}
+  }
+}
