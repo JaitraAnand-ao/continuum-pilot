@@ -48,6 +48,36 @@ describe('browser ports', () => {
     expect(elements['page-heading']?.focus).toHaveBeenCalledTimes(1)
   })
 
+  it('keep trying on later frames until React has committed the target, then stop', () => {
+    const { elements, flushFrames, ports } = fakeWindow()
+    const heading = elements['page-heading']!
+    delete elements['page-heading']
+    ports.focus('page-heading')
+    flushFrames()
+    flushFrames()
+    elements['page-heading'] = heading
+    flushFrames()
+    flushFrames()
+    expect(heading.focus).toHaveBeenCalledTimes(1)
+  })
+
+  it('give up on a target that never appears, rather than snatch focus later', () => {
+    const { elements, flushFrames, ports } = fakeWindow()
+    const button = elements['signin-button']!
+    delete elements['signin-button']
+    ports.focus('signin-button')
+    flushFrames()
+    elements['signin-button'] = button
+    flushFrames()
+    expect(button.focus).toHaveBeenCalledTimes(1)
+    delete elements['signin-button']
+    ports.focus('signin-button')
+    for (let frame = 0; frame < 100; frame++) flushFrames()
+    elements['signin-button'] = { focus: vi.fn() }
+    flushFrames()
+    expect(elements['signin-button'].focus).not.toHaveBeenCalled()
+  })
+
   it("return focus to where it was before the idle warning took it to 'Stay signed in'", () => {
     const { win, elements, flushFrames, ports } = fakeWindow()
     const reportLink = { focus: vi.fn() }

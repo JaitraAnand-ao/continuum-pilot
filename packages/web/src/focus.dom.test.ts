@@ -19,7 +19,8 @@ interface Reply {
   type?: string
 }
 
-/* The sandbox may preinstall a chromium build other than the one this Playwright release names. */
+/* The sandbox may preinstall a chromium build other than the one this Playwright release names;
+ * a CI runner that never ran `playwright install` still ships a system Chrome. */
 function chromiumExecutable(): string | undefined {
   if (existsSync(chromium.executablePath())) return undefined
   const root = process.env.PLAYWRIGHT_BROWSERS_PATH ?? ''
@@ -31,8 +32,12 @@ function chromiumExecutable(): string | undefined {
       join(root, name, 'chrome-headless-shell-linux64', 'chrome-headless-shell'),
       join(root, name, 'chrome-linux', 'headless_shell'),
     ])
+    .concat(['/usr/bin/google-chrome', '/usr/bin/chromium', '/usr/bin/chromium-browser'])
     .find((path) => existsSync(path))
 }
+
+const executablePath = chromiumExecutable()
+const hasBrowser = executablePath !== undefined || existsSync(chromium.executablePath())
 
 let browser: Browser
 let bundle: string
@@ -41,6 +46,7 @@ let meReplies: Reply[]
 let logouts: number
 
 beforeAll(async () => {
+  if (!hasBrowser) return
   const result = await build({
     stdin: {
       contents: "import { mount } from './mount'\nvoid mount(document.getElementById('root'))",
@@ -55,7 +61,6 @@ beforeAll(async () => {
     logLevel: 'silent',
   })
   bundle = result.outputFiles[0]?.text ?? ''
-  const executablePath = chromiumExecutable()
   browser = await chromium.launch(executablePath ? { executablePath } : {})
 }, 60_000)
 
@@ -118,7 +123,7 @@ const liveText = (testId: string): Promise<string> =>
 const problem = (body: unknown): Reply => ({ status: 403, body, type: 'application/problem+json' })
 const me = (body: unknown): Reply => ({ status: 200, body })
 
-describe('focus follows every ST-1 trigger in a real DOM', { timeout: 30_000 }, () => {
+describe.skipIf(!hasBrowser)('focus follows every ST-1 trigger in a real DOM', { timeout: 30_000 }, () => {
   it("@AC-1 on load without a session, focus is on 'Sign in with Microsoft'", async () => {
     await open('/', [{ status: 401, body: unauthenticatedProblem, type: 'application/problem+json' }])
     await focusSettlesOn('signin-button')

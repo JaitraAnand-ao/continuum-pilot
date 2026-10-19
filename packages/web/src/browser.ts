@@ -19,6 +19,8 @@ const TARGET_IDS: Record<Exclude<FocusTarget, 'restore'>, string> = {
   'stay-signed-in': 'stay-signed-in',
 }
 
+const FOCUS_FRAMES = 30
+
 export function createBrowserPorts(win: BrowserWindow): Ports {
   let returnFocus: HTMLElement | null = null
   return {
@@ -31,15 +33,20 @@ export function createBrowserPorts(win: BrowserWindow): Ports {
     },
     focus: (target) => {
       if (target === 'stay-signed-in') returnFocus = win.document.activeElement as HTMLElement | null
-      /* Focus after React has committed the frame that holds the target. */
-      win.requestAnimationFrame(() => {
-        const element =
-          target === 'restore'
-            ? (returnFocus ?? win.document.getElementById(TARGET_IDS['page-heading']))
-            : win.document.getElementById(TARGET_IDS[target])
-        if (target === 'restore') returnFocus = null
-        element?.focus()
-      })
+      /* Focus after React has committed the frame that holds the target; a view published
+       * before the first render commits waits a few more frames for it. */
+      const attempt = (framesLeft: number): void => {
+        win.requestAnimationFrame(() => {
+          const element =
+            target === 'restore'
+              ? (returnFocus ?? win.document.getElementById(TARGET_IDS['page-heading']))
+              : win.document.getElementById(TARGET_IDS[target])
+          if (element === null && framesLeft > 0) return attempt(framesLeft - 1)
+          if (target === 'restore') returnFocus = null
+          element?.focus()
+        })
+      }
+      attempt(FOCUS_FRAMES)
     },
     schedule: (ms, task) => {
       const id = win.setTimeout(task, ms)

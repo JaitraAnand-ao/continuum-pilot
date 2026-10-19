@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from 'vitest'
 import type { Role } from '../api/client'
 import { adminOnlyMe, readerAdminMe, readerMe } from '../test-support/fixtures'
 import { countOf, render, textOf } from '../test-support/render'
-import { AccountMenu } from './AccountMenu'
+import { AccountMenu, handleMenuKey } from './AccountMenu'
 import { AppShell } from './AppShell'
 import { IdleWarningDialog } from './IdleWarningDialog'
 
@@ -86,6 +86,26 @@ describe('@AC-9 account menu and idle warning', () => {
     expect(html).toContain('aria-expanded="true"')
     expect(html).not.toContain('hidden=""')
     expect(textOf(html)).toContain('Marta Duarte Sign out')
+  })
+
+  it('Escape on the open menu closes it and returns focus to its trigger', () => {
+    const calls: string[] = []
+    handleMenuKey(
+      'Escape',
+      true,
+      () => calls.push('close'),
+      () => calls.push('focus trigger'),
+    )
+    expect(calls).toEqual(['close', 'focus trigger'])
+  })
+
+  it('Escape on a closed menu, or any other key, leaves focus and the menu alone', () => {
+    const close = vi.fn()
+    const refocus = vi.fn()
+    handleMenuKey('Escape', false, close, refocus)
+    handleMenuKey('Enter', true, close, refocus)
+    expect(close).not.toHaveBeenCalled()
+    expect(refocus).not.toHaveBeenCalled()
   })
 
   it("the idle dialog is a labelled modal offering 'Stay signed in' first", () => {
