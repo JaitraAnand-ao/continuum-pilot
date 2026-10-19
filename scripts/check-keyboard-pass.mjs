@@ -5,7 +5,11 @@
  * per story at acceptance regardless, where a person does it (rule 12). */
 import { access } from 'node:fs/promises'
 
-const exists = (path) => access(path).then(() => true, () => false)
+const exists = (path) =>
+  access(path).then(
+    () => true,
+    () => false,
+  )
 
 if (!(await exists('packages/web/index.html'))) {
   console.log('no servable UI yet (packages/web/index.html absent) — nothing for a keyboard pass to cover')
