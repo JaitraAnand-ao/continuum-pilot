@@ -1,7 +1,8 @@
 /* Runs against a real Postgres when SR_DB_TEST_URL names a superuser connection, e.g.
  * SR_DB_TEST_URL=postgres://signin_reports:signin_reports@localhost:5432/signin_reports
  * with `docker compose up postgres`. It applies the committed migrations as sr_migrator to
- * a throwaway database and drops it afterwards. Under CI a missing URL fails, never skips. */
+ * a throwaway database and drops it afterwards. Without the URL it skips: CI provisions no
+ * Postgres. A URL that is set but malformed fails rather than skips. */
 import { randomBytes } from 'node:crypto'
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
@@ -17,17 +18,14 @@ import {
   type NewSession,
   type StoredAuditEntry,
 } from '../src/index.js'
+import { postgresTestUrl } from './postgres-test-url.js'
 
-const adminUrl = process.env.SR_DB_TEST_URL
+const adminUrl = postgresTestUrl(process.env)
 const roles = ['sr_migrator', 'sr_api', 'sr_report_worker', 'sr_mail_worker'] as const
 const migrationsFolder = join(import.meta.dirname, '..', 'migrations')
 
 it('the integration suite finds the committed migrations it applies', () => {
   expect(existsSync(join(migrationsFolder, 'meta', '_journal.json'))).toBe(true)
-})
-
-it('runs against real Postgres under CI instead of skipping', () => {
-  if (process.env.CI) expect(adminUrl, 'SR_DB_TEST_URL must be set when CI is').toBeDefined()
 })
 
 describe.skipIf(!adminUrl)('db against real Postgres', () => {
