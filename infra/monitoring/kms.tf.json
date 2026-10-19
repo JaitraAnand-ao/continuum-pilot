@@ -1,0 +1,54 @@
+{
+  "data": {
+    "aws_iam_policy_document": {
+      "monitoring_key": {
+        "statement": [
+          {
+            "sid": "AccountAdministers",
+            "effect": "Allow",
+            "principals": [{ "type": "AWS", "identifiers": ["arn:${var.partition}:iam::${var.account_id}:root"] }],
+            "actions": ["kms:*"],
+            "resources": ["*"]
+          },
+          {
+            "sid": "CloudWatchLogsUse",
+            "effect": "Allow",
+            "principals": [{ "type": "Service", "identifiers": ["logs.${var.region}.amazonaws.com"] }],
+            "actions": ["kms:Encrypt*", "kms:Decrypt*", "kms:ReEncrypt*", "kms:GenerateDataKey*", "kms:Describe*"],
+            "resources": ["*"],
+            "condition": [
+              {
+                "test": "ArnLike",
+                "variable": "kms:EncryptionContext:aws:logs:arn",
+                "values": ["arn:${var.partition}:logs:${var.region}:${var.account_id}:log-group:*"]
+              }
+            ]
+          },
+          {
+            "sid": "CloudWatchAlarmsPublish",
+            "effect": "Allow",
+            "principals": [{ "type": "Service", "identifiers": ["cloudwatch.amazonaws.com"] }],
+            "actions": ["kms:Decrypt", "kms:GenerateDataKey*"],
+            "resources": ["*"]
+          }
+        ]
+      }
+    }
+  },
+  "resource": {
+    "aws_kms_key": {
+      "monitoring": {
+        "description": "${var.name_prefix} CloudWatch Logs, audit mirror and alarm topic",
+        "enable_key_rotation": true,
+        "deletion_window_in_days": 30,
+        "policy": "${data.aws_iam_policy_document.monitoring_key.json}"
+      }
+    },
+    "aws_kms_alias": {
+      "monitoring": {
+        "name": "alias/${var.name_prefix}-monitoring",
+        "target_key_id": "${aws_kms_key.monitoring.key_id}"
+      }
+    }
+  }
+}

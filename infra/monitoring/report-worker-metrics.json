@@ -1,0 +1,19 @@
+{
+  "description": "The CloudWatch metrics CMP-3 (packages/report-worker) must emit for the CMP-11 alarms. The alarms in alarms.tf.json watch exactly these names.",
+  "namespace": "SigninReports/ReportWorker",
+  "metrics": [
+    {
+      "name": "CompleteReportAvailable",
+      "unit": "Count",
+      "statistic": "Minimum",
+      "dimensions": [],
+      "emittedBy": "report-worker job report.deadline-check",
+      "scheduleCron": "30 7 * * *",
+      "timezone": "UTC",
+      "values": {
+        "1": "A complete report for the previous UTC day D is published.",
+        "0": "No complete report for D: missing, published incomplete, or recorded as not generated."
+      }
+    }
+  ]
+}

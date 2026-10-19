@@ -1,0 +1,47 @@
+{
+  "data": {
+    "aws_iam_policy_document": {
+      "audit_mirror_deny_delete": {
+        "statement": [
+          {
+            "sid": "DenyAuditMirrorDeletion",
+            "effect": "Deny",
+            "actions": [
+              "logs:DeleteLogGroup",
+              "logs:DeleteLogStream",
+              "logs:DeleteRetentionPolicy",
+              "logs:PutRetentionPolicy",
+              "logs:DisassociateKmsKey"
+            ],
+            "resources": [
+              "arn:${var.partition}:logs:${var.region}:${var.account_id}:log-group:/${var.name_prefix}/audit-mirror",
+              "arn:${var.partition}:logs:${var.region}:${var.account_id}:log-group:/${var.name_prefix}/audit-mirror:*"
+            ]
+          },
+          {
+            "sid": "DenyAuditMirrorKeyDestruction",
+            "effect": "Deny",
+            "actions": ["kms:ScheduleKeyDeletion", "kms:DisableKey", "kms:PutKeyPolicy"],
+            "resources": ["${aws_kms_key.monitoring.arn}"]
+          }
+        ]
+      }
+    }
+  },
+  "resource": {
+    "aws_iam_policy": {
+      "audit_mirror_deny_delete": {
+        "name": "${var.name_prefix}-audit-mirror-deny-delete",
+        "description": "AD-23: the 400-day audit mirror and its key cannot be deleted or shortened.",
+        "policy": "${data.aws_iam_policy_document.audit_mirror_deny_delete.json}"
+      }
+    },
+    "aws_iam_role_policy_attachment": {
+      "audit_mirror_deny_delete": {
+        "for_each": "${toset(var.protected_role_names)}",
+        "role": "${each.value}",
+        "policy_arn": "${aws_iam_policy.audit_mirror_deny_delete.arn}"
+      }
+    }
+  }
+}

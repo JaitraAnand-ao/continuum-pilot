@@ -1,0 +1,42 @@
+{
+  "resource": {
+    "aws_sns_topic": {
+      "alarms": {
+        "name": "${var.name_prefix}-alarms",
+        "kms_master_key_id": "${aws_kms_key.monitoring.arn}"
+      }
+    },
+    "aws_cloudwatch_metric_alarm": {
+      "no_report_by_0730_utc": {
+        "alarm_name": "${var.name_prefix}-no-report-by-0730-utc",
+        "alarm_description": "ST-2 AC-6: no complete report for the previous UTC day exists at 07:30 UTC. The report-worker's 07:30 UTC report.deadline-check emits CompleteReportAvailable=0 when the report is missing, incomplete or not generated.",
+        "namespace": "SigninReports/ReportWorker",
+        "metric_name": "CompleteReportAvailable",
+        "statistic": "Minimum",
+        "period": 300,
+        "evaluation_periods": 1,
+        "datapoints_to_alarm": 1,
+        "threshold": 1,
+        "comparison_operator": "LessThanThreshold",
+        "treat_missing_data": "notBreaching",
+        "alarm_actions": ["${aws_sns_topic.alarms.arn}"],
+        "ok_actions": ["${aws_sns_topic.alarms.arn}"]
+      },
+      "report_deadline_check_missing": {
+        "alarm_name": "${var.name_prefix}-report-deadline-check-missing",
+        "alarm_description": "ST-2 AC-6: the report-worker has not emitted CompleteReportAvailable for 24 hours, so the 07:30 UTC check itself did not run and a missed report would go unnoticed.",
+        "namespace": "SigninReports/ReportWorker",
+        "metric_name": "CompleteReportAvailable",
+        "statistic": "SampleCount",
+        "period": 3600,
+        "evaluation_periods": 24,
+        "datapoints_to_alarm": 24,
+        "threshold": 1,
+        "comparison_operator": "LessThanThreshold",
+        "treat_missing_data": "breaching",
+        "alarm_actions": ["${aws_sns_topic.alarms.arn}"],
+        "ok_actions": ["${aws_sns_topic.alarms.arn}"]
+      }
+    }
+  }
+}
