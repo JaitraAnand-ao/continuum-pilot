@@ -29,9 +29,14 @@ export function navGroupsFor(roles: readonly Role[]): NavGroup[] {
   ]
 }
 
+/* The top-bar name of every role in the IF-4 enum; the config.* roles are the report administrator app role. */
+export const ROLE_NAMES: Readonly<Record<Role, string>> = {
+  reader: copy.shell.reader,
+  'config.read': copy.shell.administrator,
+  'config.write': copy.shell.administrator,
+  'config.approve': copy.shell.administrator,
+}
+
 export function roleNames(roles: readonly Role[]): string[] {
-  const names: string[] = []
-  if (roles.includes('reader')) names.push(copy.shell.reader)
-  if (roles.some((role) => role.startsWith('config.'))) names.push(copy.shell.administrator)
-  return names
+  return [...new Set(roles.map((role) => ROLE_NAMES[role]))]
 }

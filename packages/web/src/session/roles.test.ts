@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { navGroupsFor, roleNames } from './roles'
+import { loadContract } from '../test-support/contract'
+import { ROLE_NAMES, navGroupsFor, roleNames } from './roles'
 
 describe('navigation follows the /api/v1/me roles', () => {
   it('a reader sees only the REPORTS group: Daily report, Suspicious activity, Report history (AC-2)', () => {
@@ -36,5 +37,25 @@ describe('the top bar names the roles (AC-3)', () => {
     [[], []],
   ] as const)('%j -> %j', (roles, names) => {
     expect(roleNames(roles)).toEqual(names)
+  })
+})
+
+describe('role names come from an explicit table keyed by the IF-4 role enum', () => {
+  const roleSchema = loadContract('IF-4').responseSchema('/api/v1/me', 'get', 200, 'application/json') as {
+    properties: { roles: { items: { enum: string[] } } }
+  }
+
+  it('names exactly the roles the contract enumerates', () => {
+    expect(Object.keys(ROLE_NAMES).sort()).toEqual([...roleSchema.properties.roles.items.enum].sort())
+    expect(ROLE_NAMES).toEqual({
+      reader: 'Reader',
+      'config.read': 'Report administrator',
+      'config.write': 'Report administrator',
+      'config.approve': 'Report administrator',
+    })
+  })
+
+  it('names each role in the payload once, in payload order', () => {
+    expect(roleNames(['config.approve', 'reader'])).toEqual(['Report administrator', 'Reader'])
   })
 })

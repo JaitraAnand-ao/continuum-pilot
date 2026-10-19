@@ -1,5 +1,6 @@
 import { createElement } from 'react'
 import { describe, expect, it, vi } from 'vitest'
+import type { Role } from '../api/client'
 import { adminOnlyMe, readerAdminMe, readerMe } from '../test-support/fixtures'
 import { countOf, render, textOf } from '../test-support/render'
 import { AccountMenu } from './AccountMenu'
@@ -47,6 +48,24 @@ describe('@AC-3 A reader who is also a report administrator', () => {
     const html = shell({ me: adminOnlyMe, page: 'home' })
     expect(html).not.toContain('<nav')
     expect(html).toContain('<h1 id="page-heading" tabindex="-1">Entra Sign-In Reports</h1>')
+  })
+})
+
+describe('the top bar shows exactly the names for the roles in the /api/v1/me payload', () => {
+  const topBarRoles = (roles: Role[]) => {
+    const html = shell({ me: { ...readerMe, roles } })
+    return textOf(html.slice(html.indexOf('<p class="topbar__roles">'), html.indexOf('</p>')))
+  }
+
+  it.each([
+    [['reader'], 'Roles: Reader'],
+    [['config.read'], 'Roles: Report administrator'],
+    [['config.write'], 'Roles: Report administrator'],
+    [['config.approve'], 'Roles: Report administrator'],
+    [['reader', 'config.write'], 'Roles: Reader, Report administrator'],
+    [['config.read', 'config.write', 'config.approve', 'reader'], 'Roles: Report administrator, Reader'],
+  ] as const)('%j -> %s', (roles, text) => {
+    expect(topBarRoles([...roles])).toBe(text)
   })
 })
 

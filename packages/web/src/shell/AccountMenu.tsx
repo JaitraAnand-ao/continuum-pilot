@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { copy } from '../copy'
 
 export interface AccountMenuProps {
@@ -11,9 +11,18 @@ export interface AccountMenuProps {
 /* Disclosure on the top bar holding the account and 'Sign out' (AC-9). */
 export function AccountMenu({ account, displayName, onSignOut, defaultOpen = false }: AccountMenuProps) {
   const [open, setOpen] = useState(defaultOpen)
+  const trigger = useRef<HTMLButtonElement>(null)
   return (
-    <div className="account-menu">
+    <div
+      className="account-menu"
+      onKeyDown={(event) => {
+        if (event.key !== 'Escape' || !open) return
+        setOpen(false)
+        trigger.current?.focus()
+      }}
+    >
       <button
+        ref={trigger}
         type="button"
         className="account-menu__trigger"
         aria-expanded={open}
@@ -23,14 +32,7 @@ export function AccountMenu({ account, displayName, onSignOut, defaultOpen = fal
       >
         {account}
       </button>
-      <div
-        id="account-menu-panel"
-        className="account-menu__panel"
-        hidden={!open}
-        onKeyDown={(event) => {
-          if (event.key === 'Escape') setOpen(false)
-        }}
-      >
+      <div id="account-menu-panel" className="account-menu__panel" hidden={!open}>
         <p>{displayName}</p>
         <button type="button" className="button" onClick={onSignOut}>
           {copy.shell.signOut}
