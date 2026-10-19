@@ -1,8 +1,9 @@
 /* The SPA's calls to the BFF: IF-4 (who am I), IF-1 (start sign-in) and IF-5 (sign out).
  * The browser's only credential is the httpOnly '__Host-sr_session' cookie, sent by the
  * browser itself on same-origin requests (AC-8); nothing here reads or stores a token.
- * Typed from the pinned contract copies beside this file until packages/api-client is
- * generated from packages/api/openapi.json. */
+ * Typed from the pinned contract copies beside this file: packages/api-client exports no
+ * operations yet, and packages/api/openapi.json documents none, so there is nothing to
+ * generate from. Replace this module with api-client once CMP-2 publishes IF-4 and IF-5. */
 export const ROLES = ['reader', 'config.read', 'config.write', 'config.approve'] as const
 export type Role = (typeof ROLES)[number]
 
@@ -21,9 +22,13 @@ export type MeResult =
   | { kind: 'no-access'; title: string }
   | { kind: 'unavailable'; traceId?: string }
 
+/** IF-5: 204 ended the session; 401 found none left to end; anything else, or no answer,
+ * leaves the server session possibly live. */
+export type SignOutResult = 'signed-out' | 'already-signed-out' | 'failed'
+
 export interface ApiClient {
   getMe(): Promise<MeResult>
-  signOut(): Promise<void>
+  signOut(): Promise<SignOutResult>
 }
 
 type Fetch = (url: string, init?: RequestInit) => Promise<Response>
@@ -98,11 +103,15 @@ export function createApiClient(fetch: Fetch): ApiClient {
     },
 
     async signOut() {
+      let response: Response
       try {
-        await fetch('/auth/logout', { method: 'POST', credentials: 'same-origin' })
+        response = await fetch('/auth/logout', { method: 'POST', credentials: 'same-origin' })
       } catch {
-        /* The server session expires on its own; the browser leaves it either way. */
+        return 'failed'
       }
+      if (response.status === 204) return 'signed-out'
+      if (response.status === 401) return 'already-signed-out'
+      return 'failed'
     },
   }
 }

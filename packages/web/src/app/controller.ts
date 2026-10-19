@@ -1,6 +1,8 @@
 /* The session flow of SCR-1 and the signed-in frame, free of React and the DOM so every
  * transition is tested: which screen shows, the page title, where focus goes, and what is
- * announced (politely or assertively). Every decision comes from /api/v1/me (IF-4). */
+ * announced (politely or assertively). Every decision comes from /api/v1/me (IF-4).
+ * 'Signing you in' is shown and spoken only on the return from Microsoft (AC-4); a plain
+ * load waits on the server behind a neutral, silent 'starting' state. */
 import { loginHref, type ApiClient, type Me, type MeResult } from '../api/client'
 import type { Politeness } from '../a11y/announcer'
 import { isReader } from '../auth/roles'
@@ -9,6 +11,7 @@ import { COPY, FOCUS, pageTitle } from '../copy'
 import {
   formatUtcTime,
   parseLocation,
+  returnPath,
   ROUTE_LABELS,
   ROUTE_PATHS,
   SIGN_IN_PATH,
@@ -17,6 +20,7 @@ import {
 } from './routes'
 
 export type Screen =
+  | { kind: 'starting' }
   | { kind: 'checking' }
   | { kind: 'sign-in'; notice?: 'signed-out' | 'expired' }
   | { kind: 'sign-in-error'; error: CallbackError }
@@ -31,6 +35,7 @@ export interface Ports {
   clearTimer(handle: unknown): void
   redirect(url: string): void
   pushUrl(path: string): void
+  replaceUrl(path: string): void
   setTitle(title: string): void
   focus(id: string): void
   announce(text: string, politeness: Politeness): void
@@ -39,7 +44,7 @@ export interface Ports {
 type Location = { pathname: string; search: string }
 
 export class SessionController {
-  private screen: Screen = { kind: 'checking' }
+  private screen: Screen = { kind: 'starting' }
   private route: ReportRoute = 'daily'
   private timers: unknown[] = []
   private readonly listeners = new Set<() => void>()
@@ -55,10 +60,11 @@ export class SessionController {
 
   async start(location: Location): Promise<void> {
     const destination = parseLocation(location)
-    if (destination.kind === 'app') {
-      this.route = destination.route
-      await this.check({ showChecking: true, push: false })
-    } else this.show(destination)
+    if (destination.kind !== 'app') return this.show(destination)
+    this.route = destination.route
+    /* Drop the return marker so a reload or a shared link is a plain load. */
+    if (destination.returning) this.ports.replaceUrl(ROUTE_PATHS[this.route])
+    await this.check({ showChecking: destination.returning === true, push: false })
   }
 
   async restore(location: Location): Promise<void> {
@@ -78,22 +84,26 @@ export class SessionController {
   }
 
   async retry(): Promise<void> {
-    await this.check({ showChecking: true, push: false })
+    await this.check({ showChecking: false, push: false })
   }
 
   signIn(): void {
-    this.ports.redirect(loginHref({ returnTo: ROUTE_PATHS[this.route] }))
+    this.ports.redirect(loginHref({ returnTo: returnPath(this.route) }))
   }
 
   async signInWithDifferentAccount(): Promise<void> {
+    if ((await this.ports.api.signOut()) === 'failed') return this.signOutFailed()
     this.clearTimers()
-    await this.ports.api.signOut()
-    this.ports.redirect(loginHref({ returnTo: ROUTE_PATHS[this.route], maxAge: 0 }))
+    this.ports.redirect(loginHref({ returnTo: returnPath(this.route), maxAge: 0 }))
   }
 
+  /** IF-5: each outcome its own way. A failed sign-out keeps the screen, since the server
+   * session may still be live, and says so assertively. */
   async signOut(): Promise<void> {
+    const result = await this.ports.api.signOut()
+    if (result === 'failed') return this.signOutFailed()
+    if (result === 'already-signed-out') return this.expire()
     this.clearTimers()
-    await this.ports.api.signOut()
     this.ports.pushUrl(SIGN_IN_PATH)
     this.show({ kind: 'sign-in', notice: 'signed-out' })
     this.ports.announce(COPY.signIn.signedOut, 'polite')
@@ -161,6 +171,10 @@ export class SessionController {
     )
   }
 
+  private signOutFailed(): void {
+    this.ports.announce(COPY.signOut.failed, 'assertive')
+  }
+
   private expire(): void {
     this.clearTimers()
     this.ports.pushUrl(SIGN_IN_PATH)
@@ -169,7 +183,7 @@ export class SessionController {
   }
 
   /** Shows a screen other than the signed-in frame: its title, its focus, and for errors its alert. */
-  private show(screen: Exclude<Screen, { kind: 'app' }>): void {
+  private show(screen: Exclude<Screen, { kind: 'app' | 'starting' }>): void {
     this.setScreen(screen)
     switch (screen.kind) {
       case 'checking':

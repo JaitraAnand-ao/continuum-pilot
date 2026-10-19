@@ -3,7 +3,14 @@ import type { Screen } from '../app/controller'
 import type { ReportRoute } from '../app/routes'
 import { AppShell } from './AppShell'
 import { IdleWarningDialog } from './IdleWarningDialog'
-import { NoAccessScreen, SignInErrorScreen, SignInScreen, SigningInScreen, UnavailableScreen } from './SignInScreens'
+import {
+  NoAccessScreen,
+  SignInErrorScreen,
+  SignInScreen,
+  SigningInScreen,
+  StartingScreen,
+  UnavailableScreen,
+} from './SignInScreens'
 
 export type Actions = {
   signIn: () => void
@@ -16,6 +23,8 @@ export type Actions = {
 
 export function AppView({ state, actions }: { state: Screen; actions: Actions }) {
   switch (state.kind) {
+    case 'starting':
+      return <StartingScreen />
     case 'checking':
       return <SigningInScreen />
     case 'sign-in':
@@ -35,9 +44,7 @@ export function AppView({ state, actions }: { state: Screen; actions: Actions })
     case 'app':
       return (
         <>
-          <div inert={state.idleWarning}>
-            <AppShell me={state.me} route={state.route} onNavigate={actions.navigate} onSignOut={actions.signOut} />
-          </div>
+          <AppShell me={state.me} route={state.route} onNavigate={actions.navigate} onSignOut={actions.signOut} />
           {state.idleWarning && (
             <IdleWarningDialog
               idleExpiresAt={state.me.idleExpiresAt}

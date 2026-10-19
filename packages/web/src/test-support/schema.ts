@@ -1,6 +1,12 @@
-/* Test support: validates fixtures against the pinned OpenAPI contracts, so every mock the
- * web tests use is proven to be a response the BFF may actually send (contracts-honoured).
+/* Test support: validates fixtures against the OpenAPI contracts, so every mock the web
+ * tests use is proven to be a response the BFF may actually send (contracts-honoured).
+ * packages/api/openapi.json, the document api-client is generated from, is the authority
+ * for every operation it documents; the pinned step-7 copies stand in for the rest.
  * Covers the JSON Schema keywords the IF-1 and IF-4 contracts use, nothing more. */
+import { readFileSync } from 'node:fs'
+
+export const OPENAPI_PATH = new URL('../../../api/openapi.json', import.meta.url).pathname
+
 type Schema = {
   $ref?: string
   type?: string
@@ -54,6 +60,15 @@ function check(contract: Contract, schema: Schema, value: unknown, at: string, e
       else if (schema.additionalProperties === false) errors.push(`${at}: unexpected property ${key}`)
     }
   }
+}
+
+/** packages/api/openapi.json when it documents `path`, otherwise the pinned contract copy. */
+export function contractFor(
+  path: string,
+  pinned: unknown,
+  published: unknown = JSON.parse(readFileSync(OPENAPI_PATH, 'utf8')),
+): unknown {
+  return (published as Contract).paths?.[path] ? published : pinned
 }
 
 /** The errors found validating `body` as the `status` response of `method path`; empty when it conforms. */

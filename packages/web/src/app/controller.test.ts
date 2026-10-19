@@ -1,11 +1,12 @@
 import { describe, expect, it, vi } from 'vitest'
 import { SessionController, type Ports } from './controller'
-import type { MeResult } from '../api/client'
+import type { MeResult, SignOutResult } from '../api/client'
 import { adminOnlyMe, readerAdminMe, readerMe, SIGNED_IN_AT } from '../test-support/fixtures'
 
 const minute = 60_000
 
 function harness(...answers: MeResult[]) {
+  let signOutResult: SignOutResult = 'signed-out'
   let now = SIGNED_IN_AT
   const timers = new Map<number, { at: number; fn: () => void }>()
   let nextTimer = 1
@@ -15,8 +16,9 @@ function harness(...answers: MeResult[]) {
     if (!answer) throw new Error('unexpected /api/v1/me')
     return answer
   })
-  const signOut = vi.fn(async () => {
+  const signOut = vi.fn(async (): Promise<SignOutResult> => {
     events.push('POST /auth/logout')
+    return signOutResult
   })
   const ports: Ports = {
     api: { getMe, signOut },
@@ -30,6 +32,7 @@ function harness(...answers: MeResult[]) {
     },
     redirect: (url) => events.push(`redirect ${url}`),
     pushUrl: (path) => events.push(`push ${path}`),
+    replaceUrl: (path) => events.push(`replace ${path}`),
     setTitle: (title) => events.push(`title ${title}`),
     focus: (id) => events.push(`focus #${id}`),
     announce: (text, politeness) => events.push(`${politeness} ${text}`),
@@ -48,24 +51,42 @@ function harness(...answers: MeResult[]) {
     now = until
   }
   const take = () => events.splice(0)
-  return { controller, getMe, signOut, advance, take, timers, setNow: (at: number) => (now = at) }
+  return {
+    controller,
+    getMe,
+    signOut,
+    advance,
+    take,
+    timers,
+    setNow: (at: number) => (now = at),
+    signOutAnswers: (result: SignOutResult) => (signOutResult = result),
+  }
 }
 
 const readerSignedIn: MeResult = { kind: 'signed-in', me: readerMe as never }
 const deniedTitle = "You don't have access. Signed in as p.ruiz@fabrikam.com."
+const fromMicrosoft = (pathname: string) => ({ pathname, search: '?from=microsoft' })
+const checkingEvents = (path: string) => [
+  `replace ${path}`,
+  'title Signing in – Entra Sign-In Reports',
+  'focus #signing-in-heading',
+  'polite Signing you in',
+]
 
 describe('Scenario: The sign-in screen explains what it protects (AC-1)', () => {
   it('Given I am not signed in, When I open the dashboard address, Then the Sign in screen has focus on its button', async () => {
     const { controller, take } = harness({ kind: 'signed-out' })
     await controller.start({ pathname: '/', search: '' })
     expect(controller.getState()).toEqual({ kind: 'sign-in' })
-    expect(take()).toEqual([
-      'title Signing in – Entra Sign-In Reports',
-      'focus #signing-in-heading',
-      'polite Signing you in',
-      'title Sign in – Entra Sign-In Reports',
-      'focus #sign-in-button',
-    ])
+    expect(take()).toEqual(['title Sign in – Entra Sign-In Reports', 'focus #sign-in-button'])
+  })
+
+  it('while a plain first load asks the server, nothing says it is signing anyone in', async () => {
+    const { controller, take } = harness({ kind: 'signed-out' })
+    const started = controller.start({ pathname: '/', search: '' })
+    expect(controller.getState()).toEqual({ kind: 'starting' })
+    expect(take()).toEqual([])
+    await started
   })
 
   it('opening /signin shows the Sign in screen without asking the server', async () => {
@@ -81,16 +102,26 @@ describe('Scenario: The sign-in screen explains what it protects (AC-1)', () => 
     await controller.start({ pathname: '/reports/history', search: '' })
     take()
     controller.signIn()
-    expect(take()).toEqual(['redirect /auth/login?returnTo=%2Freports%2Fhistory'])
+    expect(take()).toEqual(['redirect /auth/login?returnTo=%2Freports%2Fhistory%3Ffrom%3Dmicrosoft'])
   })
 })
 
 describe('Scenario: A reader lands on the Daily report (AC-2)', () => {
   it('Given a reader, When Microsoft sign-in completes, Then the Daily report has focus on its heading', async () => {
     const { controller, take } = harness(readerSignedIn)
-    await controller.start({ pathname: '/reports/daily', search: '' })
+    await controller.start(fromMicrosoft('/reports/daily'))
     expect(controller.getState()).toEqual({ kind: 'app', me: readerMe, route: 'daily', idleWarning: false })
-    expect(take().slice(3)).toEqual(['title Daily report – Entra Sign-In Reports', 'focus #main-heading'])
+    expect(take()).toEqual([
+      ...checkingEvents('/reports/daily'),
+      'title Daily report – Entra Sign-In Reports',
+      'focus #main-heading',
+    ])
+  })
+
+  it('a reader who already has a session opens a report without the signing-in step', async () => {
+    const { controller, take } = harness(readerSignedIn)
+    await controller.start({ pathname: '/reports/history', search: '' })
+    expect(take()).toEqual(['title Report history – Entra Sign-In Reports', 'focus #main-heading'])
   })
 })
 
@@ -105,30 +136,51 @@ describe('Scenario: A reader who is also a report administrator lands on the Dai
     const { controller, take } = harness({ kind: 'signed-in', me: adminOnlyMe as never })
     await controller.start({ pathname: '/reports/daily', search: '' })
     expect(controller.getState()).toEqual({ kind: 'app', me: adminOnlyMe, route: 'none', idleWarning: false })
-    expect(take().slice(3)).toEqual(['title Entra Sign-In Reports', 'focus #main-heading'])
+    expect(take()).toEqual(['title Entra Sign-In Reports', 'focus #main-heading'])
   })
 })
 
 describe('Scenario: Access is checked after returning from Microsoft (AC-4)', () => {
-  it('While the claims are checked, Then the checking state shows and Signing you in is announced politely', async () => {
+  it('Given I completed Microsoft sign-in, While the claims are checked, Then the checking state shows and Signing you in is announced politely', async () => {
     const { controller, take } = harness(readerSignedIn)
-    const started = controller.start({ pathname: '/reports/daily', search: '' })
+    const started = controller.start(fromMicrosoft('/reports/suspicious'))
     expect(controller.getState()).toEqual({ kind: 'checking' })
-    expect(take()).toEqual([
-      'title Signing in – Entra Sign-In Reports',
-      'focus #signing-in-heading',
-      'polite Signing you in',
-    ])
+    expect(take()).toEqual(checkingEvents('/reports/suspicious'))
     await started
+  })
+
+  it('the return marker is dropped from the address so a reload is a plain load', async () => {
+    const { controller, take } = harness(readerSignedIn, readerSignedIn)
+    await controller.start(fromMicrosoft('/reports/daily'))
+    expect(take()[0]).toBe('replace /reports/daily')
+    await controller.restore({ pathname: '/reports/daily', search: '' })
+    expect(take()).not.toContain('polite Signing you in')
+  })
+
+  it('a visitor with no session yet is not told they are being signed in', async () => {
+    const { controller, take } = harness({ kind: 'signed-out' })
+    await controller.start({ pathname: '/reports/daily', search: '' })
+    expect(take()).not.toContain('polite Signing you in')
+    expect(controller.getState()).toEqual({ kind: 'sign-in' })
+  })
+
+  it('returning from Microsoft without a session after all lands on Sign in', async () => {
+    const { controller, take } = harness({ kind: 'signed-out' })
+    await controller.start(fromMicrosoft('/reports/daily'))
+    expect(take()).toEqual([
+      ...checkingEvents('/reports/daily'),
+      'title Sign in – Entra Sign-In Reports',
+      'focus #sign-in-button',
+    ])
   })
 })
 
 describe('Scenario: Someone outside both groups is turned away (AC-5)', () => {
   it('shows the denied frame titled No access, focused, with the server title announced assertively', async () => {
     const { controller, take } = harness({ kind: 'no-access', title: deniedTitle })
-    await controller.start({ pathname: '/', search: '' })
+    await controller.start(fromMicrosoft('/reports/daily'))
     expect(controller.getState()).toEqual({ kind: 'no-access', title: deniedTitle })
-    expect(take().slice(3)).toEqual([
+    expect(take().slice(4)).toEqual([
       'title No access – Entra Sign-In Reports',
       'focus #no-access-heading',
       `assertive ${deniedTitle}`,
@@ -155,7 +207,20 @@ describe('Scenario: Someone outside both groups is turned away (AC-5)', () => {
     await controller.start({ pathname: '/', search: '' })
     take()
     await controller.signInWithDifferentAccount()
-    expect(take()).toEqual(['POST /auth/logout', 'redirect /auth/login?returnTo=%2Freports%2Fdaily&maxAge=0'])
+    expect(take()).toEqual([
+      'POST /auth/logout',
+      'redirect /auth/login?returnTo=%2Freports%2Fdaily%3Ffrom%3Dmicrosoft&maxAge=0',
+    ])
+  })
+
+  it('Sign in with a different account stays put and says so when the sign-out did not complete', async () => {
+    const { controller, signOutAnswers, take } = harness({ kind: 'no-access', title: deniedTitle })
+    await controller.start({ pathname: '/', search: '' })
+    take()
+    signOutAnswers('failed')
+    await controller.signInWithDifferentAccount()
+    expect(controller.getState()).toEqual({ kind: 'no-access', title: deniedTitle })
+    expect(take()).toEqual(['POST /auth/logout', "assertive Sign-out didn't complete. Try again."])
   })
 })
 
@@ -185,22 +250,23 @@ describe('Scenario: Sign-in does not complete at Microsoft (AC-6)', () => {
       "assertive Sign-in didn't complete",
     ])
     controller.signIn()
-    expect(take()).toEqual(['redirect /auth/login?returnTo=%2Freports%2Fdaily'])
+    expect(take()).toEqual(['redirect /auth/login?returnTo=%2Freports%2Fdaily%3Ffrom%3Dmicrosoft'])
   })
 })
 
 describe('the service cannot be reached', () => {
-  it('says so, focused and assertively, and Try again checks access again', async () => {
+  it('says so, focused and assertively, and Try again checks access again without claiming to sign in', async () => {
     const { controller, take } = harness({ kind: 'unavailable' }, readerSignedIn)
     await controller.start({ pathname: '/reports/suspicious', search: '' })
     expect(controller.getState()).toEqual({ kind: 'unavailable' })
-    expect(take().slice(3)).toEqual([
+    expect(take()).toEqual([
       'title Service unavailable – Entra Sign-In Reports',
       'focus #unavailable-heading',
       "assertive We couldn't check your access",
     ])
     await controller.retry()
     expect(controller.getState()).toEqual({ kind: 'app', me: readerMe, route: 'suspicious', idleWarning: false })
+    expect(take()).toEqual(['title Suspicious activity – Entra Sign-In Reports', 'focus #main-heading'])
   })
 })
 
@@ -347,16 +413,55 @@ describe('Scenario: Signing out ends the session (AC-9)', () => {
   })
 })
 
+describe('each IF-5 sign-out outcome has its own handling', () => {
+  it('204: the session ended, so Sign in says I have been signed out', async () => {
+    const { controller, take } = harness(readerSignedIn)
+    await controller.start({ pathname: '/', search: '' })
+    take()
+    await controller.signOut()
+    expect(controller.getState()).toEqual({ kind: 'sign-in', notice: 'signed-out' })
+    expect(take().at(-1)).toBe('polite You have been signed out.')
+  })
+
+  it('401: the session had already ended, so Sign in says the session ended', async () => {
+    const { controller, signOutAnswers, timers, take } = harness(readerSignedIn)
+    await controller.start({ pathname: '/', search: '' })
+    take()
+    signOutAnswers('already-signed-out')
+    await controller.signOut()
+    expect(controller.getState()).toEqual({ kind: 'sign-in', notice: 'expired' })
+    expect(timers.size).toBe(0)
+    expect(take()).toEqual([
+      'POST /auth/logout',
+      'push /signin',
+      'title Sign in – Entra Sign-In Reports',
+      'focus #sign-in-button',
+      'polite Your session ended. Sign in again to continue.',
+    ])
+  })
+
+  it('any other answer or no answer: the session may still be live, so I stay put and am told assertively', async () => {
+    const { controller, signOutAnswers, timers, take } = harness(readerSignedIn)
+    await controller.start({ pathname: '/', search: '' })
+    take()
+    signOutAnswers('failed')
+    await controller.signOut()
+    expect(controller.getState()).toEqual({ kind: 'app', me: readerMe, route: 'daily', idleWarning: false })
+    expect(timers.size).toBe(2)
+    expect(take()).toEqual(['POST /auth/logout', "assertive Sign-out didn't complete. Try again."])
+  })
+})
+
 describe('subscribers', () => {
   it('hear every state change until they unsubscribe; dispose clears timers', async () => {
     const { controller, timers } = harness(readerSignedIn)
     const listener = vi.fn()
     const unsubscribe = controller.subscribe(listener)
     await controller.start({ pathname: '/', search: '' })
-    expect(listener).toHaveBeenCalledTimes(2)
+    expect(listener).toHaveBeenCalledTimes(1)
     unsubscribe()
     controller.dispose()
     expect(timers.size).toBe(0)
-    expect(listener).toHaveBeenCalledTimes(2)
+    expect(listener).toHaveBeenCalledTimes(1)
   })
 })

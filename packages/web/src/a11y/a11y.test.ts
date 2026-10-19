@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import { createAnnouncer } from './announcer'
-import { focusById } from './focus'
+import { containTab, focusById } from './focus'
 
 function fakeDocument() {
   const appended: FakeElement[] = []
@@ -63,5 +63,44 @@ describe('focusById', () => {
     expect(focusById(doc as unknown as Document, 'main-heading')).toBe(true)
     expect(focus).toHaveBeenCalledOnce()
     expect(focusById(doc as unknown as Document, 'missing')).toBe(false)
+  })
+})
+
+describe('containTab keeps Tab inside a dialog', () => {
+  function dialog(count: number) {
+    const doc: { activeElement: unknown } = { activeElement: null }
+    const items = Array.from({ length: count }, (_, index) => ({
+      index,
+      focus: vi.fn(() => (doc.activeElement = items[index])),
+    }))
+    const container = { ownerDocument: doc, querySelectorAll: () => items }
+    const press = (key: string, shiftKey = false) => {
+      const event = { key, shiftKey, preventDefault: vi.fn() }
+      containTab(event as unknown as KeyboardEvent, container as unknown as HTMLElement)
+      return event.preventDefault.mock.calls.length > 0
+    }
+    return { doc, items, press }
+  }
+
+  it('wraps Tab from the last element to the first, and Shift+Tab from the first to the last', () => {
+    const { doc, items, press } = dialog(2)
+    doc.activeElement = items[1]
+    expect(press('Tab')).toBe(true)
+    expect(doc.activeElement).toBe(items[0])
+    expect(press('Tab', true)).toBe(true)
+    expect(doc.activeElement).toBe(items[1])
+  })
+
+  it('leaves Tab between elements, and every other key, to the browser', () => {
+    const { doc, items, press } = dialog(2)
+    doc.activeElement = items[0]
+    expect(press('Tab')).toBe(false)
+    expect(press('Enter')).toBe(false)
+    doc.activeElement = items[1]
+    expect(press('Tab', true)).toBe(false)
+  })
+
+  it('does nothing in a container with nothing to focus', () => {
+    expect(dialog(0).press('Tab')).toBe(false)
   })
 })

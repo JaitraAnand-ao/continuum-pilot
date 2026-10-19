@@ -44,6 +44,9 @@ export const COPY = {
     detail: 'Nothing was changed. Try again in a moment.',
     tryAgain: 'Try again',
   },
+  signOut: {
+    failed: "Sign-out didn't complete. Try again.",
+  },
   shell: {
     navigation: 'Reports navigation',
     roles: 'Roles',
@@ -60,7 +63,7 @@ export const COPY = {
   },
 } as const
 
-/** Ids of the elements that receive focus when a screen or dialog opens. */
+/** Ids of the elements that receive focus when a screen, dialog or menu opens, and of the widgets' parts. */
 export const FOCUS = {
   signInButton: 'sign-in-button',
   signingIn: 'signing-in-heading',
@@ -69,4 +72,8 @@ export const FOCUS = {
   unavailable: 'unavailable-heading',
   main: 'main-heading',
   staySignedIn: 'stay-signed-in',
+  idleSignOut: 'idle-sign-out',
+  accountMenuButton: 'account-menu-button',
+  accountMenu: 'account-menu',
+  accountSignOut: 'account-sign-out',
 } as const

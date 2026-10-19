@@ -1,0 +1,52 @@
+/* Design tokens for packages/web: the only place a raw colour, length, weight or duration
+ * appears. app.css styles every screen through these custom properties. System fonts only. */
+:root {
+  --color-text: #1b1f24;
+  --color-text-muted: #4a5260;
+  --color-surface: #ffffff;
+  --color-surface-raised: #f4f6f8;
+  --color-border: #6b7480;
+  --color-accent: #0b5cad;
+  --color-accent-hover: #084a8c;
+  --color-on-accent: #ffffff;
+  --color-link: #0b5cad;
+  --color-notice-surface: #fff4e5;
+  --color-notice-border: #8a5a00;
+  --color-backdrop: rgb(27 31 36 / 60%);
+
+  --focus-ring-color: #b8330f;
+  --focus-ring-width: 3px;
+  --focus-ring-offset: 2px;
+
+  --font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --font-family-mono: ui-monospace, 'Cascadia Mono', Consolas, monospace;
+  --font-size-body: 1rem;
+  --font-size-small: 0.875rem;
+  --font-size-subheading: 1.125rem;
+  --font-size-heading: 1.5rem;
+  --font-weight-bold: 600;
+  --line-height-body: 1.5;
+  --letter-spacing-caps: 0.08em;
+
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-6: 1.5rem;
+  --space-8: 2rem;
+  --space-12: 3rem;
+
+  --border-width: 1px;
+  --size-hairline: 1px;
+  --radius: 0.25rem;
+  --icon-size: 1.5rem;
+  --measure: 36rem;
+  --nav-width: 14rem;
+  --content-min-share: 50%;
+  --content-full: 100%;
+  --size-viewport-height: 100vh;
+
+  --motion-duration-short: 150ms;
+  --motion-duration-none: 0s;
+  --motion-ease: ease-out;
+}

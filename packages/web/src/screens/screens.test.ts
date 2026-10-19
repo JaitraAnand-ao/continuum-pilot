@@ -52,6 +52,14 @@ describe('SCR-1 Sign in (AC-1)', () => {
   })
 })
 
+describe('a plain first load, before the server has answered', () => {
+  it('shows a busy, empty page: no signing-in copy for a visitor who has no session yet', () => {
+    const screen = view({ kind: 'starting' })
+    expect(screen.text).toBe('')
+    expect(screen.html).toBe('<main class="sign-in" aria-busy="true"></main>')
+  })
+})
+
 describe('SCR-1 Signing you in (AC-4)', () => {
   it("reads 'Signing you in… Checking your access with Microsoft Entra ID.' with a focusable heading", () => {
     const screen = view({ kind: 'checking' })
@@ -162,10 +170,15 @@ describe('the signed-in frame (AC-2, AC-3)', () => {
     ])
   })
 
-  it("offers 'Sign out' from the account menu", () => {
+  it("offers 'Sign out' from the account menu, a button controlling a popover", () => {
     const screen = app(readerMe)
-    expect(screen.texts('summary')).toEqual(['Account menu'])
-    expect(screen.html).toMatch(/<details[\s\S]*<button[^>]*>Sign out<\/button>[\s\S]*<\/details>/)
+    /* HTML attribute names are case-insensitive; React writes popoverTarget as given. */
+    expect(screen.byId('account-menu-button')?.toLowerCase()).toBe(
+      '<button type="button" id="account-menu-button" popovertarget="account-menu" aria-controls="account-menu" aria-expanded="false">',
+    )
+    expect(screen.html).toMatch(
+      /<div id="account-menu" popover="auto"[^>]*>[\s\S]*<button type="button" id="account-sign-out">Sign out<\/button><\/div>/,
+    )
   })
 
   it('shows no report figures; the Daily report content is not part of this story', () => {
@@ -182,21 +195,25 @@ describe('the signed-in frame (AC-2, AC-3)', () => {
 })
 
 describe('the idle warning dialog (AC-9)', () => {
-  it("offers 'Stay signed in' and 'Sign out' in a labelled modal alert dialog", () => {
+  it("offers 'Stay signed in' and 'Sign out' in a dialog named by its title", () => {
     const screen = app(readerMe, 'daily', true)
-    const dialog = screen.html.match(/<div[^>]*role="alertdialog"[^>]*>/)?.[0]
-    expect(dialog).toContain('aria-modal="true"')
-    expect(dialog).toContain('aria-labelledby="idle-warning-title"')
-    expect(dialog).toContain('aria-describedby="idle-warning-body"')
+    expect(screen.tags('dialog')).toEqual(['<dialog aria-labelledby="idle-warning-title" class="dialog">'])
     expect(screen.text).toContain('Your session is about to end')
     expect(screen.text).toContain('You will be signed out at 08:15 UTC unless you stay signed in.')
     expect(screen.byId('stay-signed-in')).toMatch(/^<button\b/)
+    expect(screen.byId('idle-sign-out')).toMatch(/^<button\b/)
     expect(screen.texts('button').slice(-2)).toEqual(['Stay signed in', 'Sign out'])
   })
 
-  it('makes the page behind it inert', () => {
-    expect(app(readerMe, 'daily', true).html).toMatch(/<div[^>]*inert=""/)
-    expect(app(readerMe).html).not.toContain('inert')
-    expect(app(readerMe).html).not.toContain('alertdialog')
+  it('is a plain dialog: its warning is spoken once, by the shared assertive region', () => {
+    const screen = app(readerMe, 'daily', true)
+    expect(screen.html).not.toContain('alertdialog')
+    expect(screen.html).not.toContain('aria-describedby')
+    expect(screen.html).not.toContain('aria-live')
+    expect(screen.html).not.toContain('role="alert"')
+  })
+
+  it('is absent until the warning is due', () => {
+    expect(app(readerMe).html).not.toContain('<dialog')
   })
 })

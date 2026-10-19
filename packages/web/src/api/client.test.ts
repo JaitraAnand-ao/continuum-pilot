@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import { createApiClient, loginHref } from './client'
-import if1 from './if-1.contract.json'
-import if4 from './if-4.contract.json'
-import { contractErrors } from '../test-support/schema'
+import pinnedIf1 from './if-1.contract.json'
+import pinnedIf4 from './if-4.contract.json'
+import { contractErrors, contractFor, OPENAPI_PATH } from '../test-support/schema'
 import {
   adminOnlyMe,
   fakeFetch,
@@ -13,6 +13,24 @@ import {
   readerAdminMe,
   readerMe,
 } from '../test-support/fixtures'
+
+/* Fixtures are validated against packages/api/openapi.json, the document api-client is
+ * generated from, wherever it documents the operation; the pinned step-7 copies stand in
+ * only until CMP-2 publishes the route. */
+const if1 = contractFor('/auth/login', pinnedIf1)
+const if4 = contractFor('/api/v1/me', pinnedIf4)
+
+describe('contractFor prefers packages/api/openapi.json', () => {
+  it('reads the committed openapi.json', () => {
+    expect(OPENAPI_PATH).toMatch(/packages\/api\/openapi\.json$/)
+  })
+
+  it('uses openapi.json for an operation it documents, and the pinned copy only for one it does not', () => {
+    const published = { openapi: '3.1.0', paths: { '/api/v1/me': { get: { responses: {} } } } }
+    expect(contractFor('/api/v1/me', pinnedIf4, published)).toBe(published)
+    expect(contractFor('/auth/login', pinnedIf1, published)).toBe(pinnedIf1)
+  })
+})
 
 describe('the fixtures are responses the IF-4 contract allows', () => {
   it.each([
@@ -78,7 +96,7 @@ describe('the fixtures are responses the IF-4 contract allows', () => {
 
 describe('loginHref builds the IF-1 start-sign-in address', () => {
   const pattern = new RegExp(
-    (if1.paths['/auth/login'].get.parameters[0] as { schema: { pattern: string } }).schema.pattern,
+    (pinnedIf1.paths['/auth/login'].get.parameters[0] as { schema: { pattern: string } }).schema.pattern,
   )
 
   it('returns to the requested same-origin path', () => {
@@ -154,15 +172,29 @@ describe('getMe reads IF-4 into one result per documented status', () => {
   })
 })
 
-describe('signOut ends the server session', () => {
-  it('posts to /auth/logout with the session cookie only', async () => {
+describe('signOut reads IF-5 into one result per status', () => {
+  it('posts to /auth/logout with the session cookie only; 204 is signed out', async () => {
     const { fetch, calls } = fakeFetch(new Response(null, { status: 204 }))
-    await createApiClient(fetch).signOut()
+    expect(await createApiClient(fetch).signOut()).toBe('signed-out')
     expect(calls).toEqual([{ url: '/auth/logout', init: { method: 'POST', credentials: 'same-origin' } }])
   })
 
-  it('resolves even when the network fails, so the browser still leaves the session', async () => {
+  it('401 means there was no session left to end', async () => {
+    const { fetch } = fakeFetch(problem(noSessionProblem))
+    expect(await createApiClient(fetch).signOut()).toBe('already-signed-out')
+  })
+
+  it.each([
+    ['a refusal', problem({ ...noSessionProblem, status: 403 })],
+    ['a server error', problem({ ...noSessionProblem, status: 500 })],
+    ['an undocumented success', new Response(null, { status: 200 })],
+  ])('%s is a sign-out that did not complete', async (_name, response) => {
+    const { fetch } = fakeFetch(response)
+    expect(await createApiClient(fetch).signOut()).toBe('failed')
+  })
+
+  it('a network failure is a sign-out that did not complete', async () => {
     const { fetch } = fakeFetch(new TypeError('Failed to fetch'))
-    await expect(createApiClient(fetch).signOut()).resolves.toBeUndefined()
+    expect(await createApiClient(fetch).signOut()).toBe('failed')
   })
 })

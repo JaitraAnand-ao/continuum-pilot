@@ -29,6 +29,11 @@ export function SignInScreen({
   )
 }
 
+/** A plain load while the server answers: busy and silent, since nobody is being signed in yet. */
+export function StartingScreen() {
+  return <main className="sign-in" aria-busy="true" />
+}
+
 export function SigningInScreen() {
   return (
     <main className="sign-in" aria-busy="true">

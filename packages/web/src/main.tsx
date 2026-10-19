@@ -1,5 +1,6 @@
 /* Browser wiring: binds the controller's ports to the real window and renders its state.
- * Everything with behaviour lives in the controller and the screens, tested there. */
+ * Behaviour lives in the controller and the screens; main.test.ts drives this wiring in a
+ * real document for every ST-1 trigger. */
 import { useSyncExternalStore } from 'react'
 import { createRoot } from 'react-dom/client'
 import { createApiClient } from './api/client'
@@ -7,6 +8,7 @@ import { createAnnouncer } from './a11y/announcer'
 import { focusById } from './a11y/focus'
 import { SessionController } from './app/controller'
 import { AppView, type Actions } from './screens/AppView'
+import './styles/app.css'
 
 function App({ controller, actions }: { controller: SessionController; actions: Actions }) {
   const state = useSyncExternalStore(controller.subscribe, controller.getState)
@@ -23,6 +25,7 @@ export function mount(container: HTMLElement, win: Window = window): () => void 
     clearTimer: (handle) => win.clearTimeout(handle as number),
     redirect: (url) => win.location.assign(url),
     pushUrl: (path) => win.history.pushState(null, '', path),
+    replaceUrl: (path) => win.history.replaceState(null, '', path),
     setTitle: (title) => (doc.title = title),
     /* After React has committed the screen the focus target belongs to. */
     focus: (id) => win.requestAnimationFrame(() => focusById(doc, id)),

@@ -1,0 +1,254 @@
+/* The packages/web stylesheet: tokens only (styles.test.ts rejects any raw value here).
+ * Layouts wrap rather than scroll, so every screen reflows at 320px without a breakpoint. */
+@import './tokens.css';
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-family);
+  font-size: var(--font-size-body);
+  line-height: var(--line-height-body);
+  color: var(--color-text);
+  background: var(--color-surface);
+}
+
+h1 {
+  margin: 0;
+  font-size: var(--font-size-heading);
+}
+
+h2 {
+  margin: 0;
+  font-size: var(--font-size-subheading);
+}
+
+p,
+h1,
+h2,
+dd,
+code,
+li {
+  overflow-wrap: anywhere;
+}
+
+p {
+  margin: 0;
+}
+
+code {
+  font-family: var(--font-family-mono);
+}
+
+a {
+  color: var(--color-link);
+}
+
+button {
+  max-width: var(--content-full);
+  padding: var(--space-2) var(--space-4);
+  font: inherit;
+  color: var(--color-on-accent);
+  background: var(--color-accent);
+  border: var(--border-width) solid var(--color-accent);
+  border-radius: var(--radius);
+  cursor: pointer;
+  transition: background-color var(--motion-duration-short) var(--motion-ease);
+}
+
+button:hover {
+  background: var(--color-accent-hover);
+}
+
+/* The focus-ring token on everything a keyboard reaches, and on the headings the
+ * controller moves focus to when a screen opens. */
+button:focus-visible,
+a:focus-visible,
+[tabindex='-1']:focus {
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
+  outline-offset: var(--focus-ring-offset);
+}
+
+/* Visually hidden, still read: the polite and assertive live regions. */
+.sr-only {
+  position: absolute;
+  width: var(--size-hairline);
+  height: var(--size-hairline);
+  padding: 0;
+  margin: calc(var(--size-hairline) * -1);
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.icon {
+  flex: none;
+  width: var(--icon-size);
+  height: var(--icon-size);
+}
+
+/* SCR-1 and its states */
+.sign-in {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-4);
+  max-width: var(--measure);
+  margin: 0 auto;
+  padding: var(--space-8) var(--space-4);
+}
+
+.notice {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  background: var(--color-notice-surface);
+  border-left: var(--focus-ring-width) solid var(--color-notice-border);
+}
+
+.notice p {
+  flex-basis: var(--content-full);
+}
+
+.sign-in dl {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin: 0;
+}
+
+.sign-in dt {
+  font-weight: var(--font-weight-bold);
+}
+
+.sign-in dd {
+  margin: 0 0 var(--space-2);
+}
+
+/* The signed-in frame: the navigation sits beside the content while both fit, and above
+ * it when they do not. */
+.shell {
+  min-height: var(--size-viewport-height);
+}
+
+.top-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border-bottom: var(--border-width) solid var(--color-border);
+}
+
+.app-name {
+  font-weight: var(--font-weight-bold);
+}
+
+.roles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.roles li {
+  padding: 0 var(--space-2);
+  border: var(--border-width) solid var(--color-border);
+  border-radius: var(--radius);
+}
+
+.account-menu {
+  inset: var(--space-12) var(--space-4) auto auto;
+  margin: 0;
+  padding: var(--space-4);
+  color: var(--color-text);
+  background: var(--color-surface);
+  border: var(--border-width) solid var(--color-border);
+  border-radius: var(--radius);
+}
+
+.account-menu p {
+  margin-bottom: var(--space-3);
+}
+
+.layout {
+  display: flex;
+  flex-wrap: wrap;
+}
+
+.side-nav {
+  flex: 1 1 var(--nav-width);
+  padding: var(--space-4);
+  background: var(--color-surface-raised);
+}
+
+.side-nav h2 {
+  font-size: var(--font-size-small);
+  letter-spacing: var(--letter-spacing-caps);
+  color: var(--color-text-muted);
+}
+
+.side-nav ul {
+  margin: var(--space-2) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.side-nav a {
+  display: block;
+  padding: var(--space-1) 0;
+}
+
+.side-nav a[aria-current='page'] {
+  font-weight: var(--font-weight-bold);
+}
+
+.content {
+  flex: 999 1 0;
+  min-width: var(--content-min-share);
+  padding: var(--space-6) var(--space-4);
+}
+
+/* AC-9 idle warning */
+.dialog {
+  width: var(--measure);
+  padding: var(--space-6);
+  color: var(--color-text);
+  border: var(--border-width) solid var(--color-border);
+  border-radius: var(--radius);
+}
+
+.dialog::backdrop {
+  background: var(--color-backdrop);
+}
+
+.dialog h2 {
+  margin: var(--space-2) 0;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  margin-top: var(--space-4);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition-duration: var(--motion-duration-none) !important;
+    animation-duration: var(--motion-duration-none) !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+  }
+}
