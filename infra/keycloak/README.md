@@ -32,10 +32,11 @@ CMP-6: realm as code (AD-6, AD-19). FIPS Keycloak 26.8.1 image built from source
 
 ## Secrets
 
-No export, env file or config holds a secret. The realm references `${KEYCLOAK_BFF_CLIENT_SECRET}`
-(import-time environment, from a Secrets Manager ARN in the task definition) and
-`${vault.entra_client_secret}` (file vault mounted from Secrets Manager). Locally they come from
-the gitignored `.env`, with `ENTRA_CLIENT_SECRET` and `FAKE_ENTRA_USER_PASSWORD` for fake-entra.
+No export, env file or config holds a secret. The realm references only vault entries,
+`${vault.bff_client_secret}` and `${vault.entra_client_secret}`, which Keycloak resolves at
+runtime from the file vault mounted from Secrets Manager (files `signin-reports_bff_client_secret`
+and `signin-reports_entra_client_secret`). Locally the vault files and `ENTRA_CLIENT_SECRET` and
+`FAKE_ENTRA_USER_PASSWORD` for fake-entra come from the gitignored `.env`.
 
 ## Building
 

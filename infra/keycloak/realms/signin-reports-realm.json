@@ -68,6 +68,12 @@
       }
     ]
   },
+  "scopeMappings": [
+    {
+      "client": "signin-reports-bff",
+      "roles": ["reader", "report-admin"]
+    }
+  ],
   "defaultRole": {
     "name": "default-roles-signin-reports",
     "composite": false,
@@ -253,7 +259,7 @@
       "protocol": "openid-connect",
       "publicClient": false,
       "clientAuthenticatorType": "client-secret",
-      "secret": "${KEYCLOAK_BFF_CLIENT_SECRET}",
+      "secret": "${vault.bff_client_secret}",
       "standardFlowEnabled": true,
       "implicitFlowEnabled": false,
       "directAccessGrantsEnabled": false,

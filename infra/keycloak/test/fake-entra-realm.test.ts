@@ -1,6 +1,6 @@
 /* The fake-entra realm stands in for Entra ID locally and in CI (never in the production
-   image). Its users carry the claims Entra issues; pushing each user's claims through the
-   signin-reports broker config proves the role mapping and denial the story needs. */
+   image). Its users carry the claims Entra issues; signin.integration.test.ts signs each of them
+   in through the signin-reports broker to prove the role mapping and denial the story needs. */
 import { describe, expect, it } from 'vitest'
 import { asObject, asObjects, placeholder, readJson, readText, stringLeaves, type JsonObject } from './load.js'
 
@@ -20,36 +20,10 @@ function envFile(relative: string): Record<string, string> {
 const local = envFile('env/local.env')
 const gov = envFile('env/aws-us-gov.env.tftpl')
 
-function substitute(value: string, env: Record<string, string>): string {
-  return value.replace(/\$\{([A-Z][A-Z0-9_]*)\}/g, (_, name: string) => env[name] ?? `\${${name}}`)
-}
-
-/** The ID-token claims fake-entra issues for a user, from its protocol mappers. */
-function claimsFor(username: string): { tid: string; roles: string[]; oid: string } {
+/** The oid claim fake-entra issues for a user: the username the signin-reports broker keeps. */
+function oidOf(username: string): string {
   const user = asObjects(fake.users).find((candidate) => candidate.username === username)
-  if (!user) throw new Error(`fake-entra has no user ${username}`)
-  const attributes = asObject(user.attributes)
-  const first = (name: string) => String((attributes[name] as string[] | undefined)?.[0] ?? '')
-  const roles = (asObject(user.clientRoles)['signin-reports-broker'] as string[] | undefined) ?? []
-  return { tid: first('tid'), oid: first('oid'), roles }
-}
-
-/** What the signin-reports broker does with those claims: tid filter, then FORCE role mappers. */
-function signIn(username: string): { accepted: boolean; realmRoles: string[] } {
-  const entra = asObjects(realm.identityProviders)[0] ?? {}
-  const config = asObject(entra.config)
-  const claims = claimsFor(username)
-  const tidPattern = new RegExp(substitute(String(config.claimFilterValue), local))
-  if (config.filteredByClaim !== 'true' || !tidPattern.test(claims.tid)) return { accepted: false, realmRoles: [] }
-  const realmRoles = asObjects(realm.identityProviderMappers)
-    .filter((mapper) => mapper.identityProviderMapper === 'oidc-role-idp-mapper')
-    .map((mapper) => asObject(mapper.config))
-    .filter(
-      (mapperConfig) => mapperConfig.claim === 'roles' && claims.roles.includes(String(mapperConfig['claim.value'])),
-    )
-    .map((mapperConfig) => String(mapperConfig.role))
-    .sort()
-  return { accepted: true, realmRoles }
+  return String((asObject(user?.attributes).oid as string[] | undefined)?.[0] ?? '')
 }
 
 describe('realm fake-entra', () => {
@@ -92,42 +66,18 @@ describe('realm fake-entra', () => {
     expect(asObject(broker.authenticationFlowBindingOverrides)).toEqual({})
   })
 
+  it('every user has a distinct oid, the username Keycloak keeps', () => {
+    const oids = asObjects(fake.users).map((user) => oidOf(String(user.username)))
+    expect(oids.every((oid) => /^[0-9a-f-]{36}$/.test(oid))).toBe(true)
+    expect(new Set(oids).size).toBe(oids.length)
+  })
+
   it('holds no password or secret value, only placeholders', () => {
     const credentials = asObjects(fake.users).flatMap((user) => asObjects(user.credentials))
     expect(credentials.length).toBeGreaterThan(0)
     for (const credential of credentials) expect(credential.value).toBe('${FAKE_ENTRA_USER_PASSWORD}')
     const leaves = stringLeaves(fake).filter(([path]) => /secret|password/i.test(path.split('.').pop() ?? ''))
     for (const [path, value] of leaves) expect(value, path).toMatch(placeholder)
-  })
-})
-
-describe('signing in through fake-entra', () => {
-  it('AC-2: a reader-group member gets reader only', () => {
-    expect(signIn('reader')).toEqual({ accepted: true, realmRoles: ['reader'] })
-  })
-
-  it('AC-3: a person with both app roles gets reader and report-admin', () => {
-    expect(signIn('reader-admin')).toEqual({ accepted: true, realmRoles: ['reader', 'report-admin'] })
-  })
-
-  it('AC-7: an administrator without the reader role gets report-admin only', () => {
-    expect(signIn('admin')).toEqual({ accepted: true, realmRoles: ['report-admin'] })
-  })
-
-  it('AC-5: an account in neither group signs in with no report role', () => {
-    expect(signIn('outsider')).toEqual({ accepted: true, realmRoles: [] })
-  })
-
-  it('an account from another tenant is refused by the tid check', () => {
-    const foreign = claimsFor('other-tenant')
-    expect(foreign.roles).toContain('SignInReports.Reader')
-    expect(signIn('other-tenant')).toEqual({ accepted: false, realmRoles: [] })
-  })
-
-  it('every user has a distinct oid, the username Keycloak keeps', () => {
-    const oids = asObjects(fake.users).map((user) => claimsFor(String(user.username)).oid)
-    expect(oids.every((oid) => /^[0-9a-f-]{36}$/.test(oid))).toBe(true)
-    expect(new Set(oids).size).toBe(oids.length)
   })
 })
 

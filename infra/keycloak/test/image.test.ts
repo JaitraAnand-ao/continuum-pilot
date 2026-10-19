@@ -86,6 +86,10 @@ describe('keycloak.conf', () => {
     expect(options['health-enabled']).toBe('true')
   })
 
+  it('serves the admin console and master realm only on the internal admin hostname', () => {
+    expect(options['hostname-admin']).toBe('${KC_HOSTNAME_ADMIN}')
+  })
+
   it('keeps no secret: passwords come from the task definition secrets as KC_* variables', () => {
     for (const name of Object.keys(options)) expect(name).not.toMatch(/password|secret/)
   })

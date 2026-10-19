@@ -1,7 +1,7 @@
 /* ST-1 in CMP-6 (AD-6): the signin-reports realm export is the only way the realm is
    configured. These tests read the committed export the image imports. */
 import { describe, expect, it } from 'vitest'
-import { asObject, asObjects, placeholder, readJson, stringLeaves, type JsonObject } from './load.js'
+import { asObject, asObjects, readJson, stringLeaves, type JsonObject } from './load.js'
 
 const realm = readJson('realms/signin-reports-realm.json')
 const providers = asObjects(realm.identityProviders)
@@ -211,7 +211,7 @@ describe('client signin-reports-bff (the only client the BFF uses)', () => {
     expect(bff.implicitFlowEnabled).toBe(false)
     expect(bff.directAccessGrantsEnabled).toBe(false)
     expect(bff.serviceAccountsEnabled).toBe(false)
-    expect(bff.secret).toBe('${KEYCLOAK_BFF_CLIENT_SECRET}')
+    expect(bff.secret).toBe('${vault.bff_client_secret}')
     expect(attributes['pkce.code.challenge.method']).toBe('S256')
   })
 
@@ -251,11 +251,11 @@ describe('client signin-reports-bff (the only client the BFF uses)', () => {
 })
 
 describe('no secrets in the export', () => {
-  it('every secret, password or key value is an environment placeholder or vault reference', () => {
+  it('every secret, password or key value is a vault reference, never an import-time value', () => {
     const sensitive = /secret|password|credential|private|keystore|token$/i
     const leaves = stringLeaves(realm).filter(([path]) => sensitive.test(path.split('.').pop() ?? ''))
     expect(leaves.length).toBeGreaterThan(0)
-    for (const [path, value] of leaves) expect(value, path).toMatch(placeholder)
+    for (const [path, value] of leaves) expect(value, path).toMatch(/^\$\{vault\.[a-z0-9_]+\}$/)
   })
 
   it('commits no realm keys: Keycloak generates them at import', () => {
