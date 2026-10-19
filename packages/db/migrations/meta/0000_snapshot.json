@@ -1,0 +1,277 @@
+{
+  "id": "3d5d344d-c50f-453f-9b4a-f1ec496ad644",
+  "prevId": "00000000-0000-0000-0000-000000000000",
+  "version": "7",
+  "dialect": "postgresql",
+  "tables": {
+    "public.reports": {
+      "name": "reports",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "report_date": {
+          "name": "report_date",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "window_start": {
+          "name": "window_start",
+          "type": "timestamp (3) with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "window_end": {
+          "name": "window_end",
+          "type": "timestamp (3) with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "status": {
+          "name": "status",
+          "type": "report_status",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "missing_sources": {
+          "name": "missing_sources",
+          "type": "text[]",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::text[]"
+        },
+        "total_count": {
+          "name": "total_count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "successful_count": {
+          "name": "successful_count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "failed_count": {
+          "name": "failed_count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "content_hash": {
+          "name": "content_hash",
+          "type": "char(64)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "config_version_id": {
+          "name": "config_version_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "published_at": {
+          "name": "published_at",
+          "type": "timestamp (3) with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "recorded_at": {
+          "name": "recorded_at",
+          "type": "timestamp (3) with time zone",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {
+        "reports_report_date_key": {
+          "name": "reports_report_date_key",
+          "columns": [
+            {
+              "expression": "report_date",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "reports_window_is_the_utc_day": {
+          "name": "reports_window_is_the_utc_day",
+          "value": "\"reports\".\"window_start\" = (\"reports\".\"report_date\"::timestamp AT TIME ZONE 'UTC') AND \"reports\".\"window_end\" = \"reports\".\"window_start\" + interval '1 day'"
+        },
+        "reports_counts_reconcile": {
+          "name": "reports_counts_reconcile",
+          "value": "\"reports\".\"successful_count\" >= 0 AND \"reports\".\"failed_count\" >= 0 AND \"reports\".\"total_count\" = \"reports\".\"successful_count\" + \"reports\".\"failed_count\""
+        },
+        "reports_content_hash_is_sha256": {
+          "name": "reports_content_hash_is_sha256",
+          "value": "\"reports\".\"content_hash\" ~ '^[0-9a-f]{64}$'"
+        },
+        "reports_status_matches_contents": {
+          "name": "reports_status_matches_contents",
+          "value": "(\"reports\".\"status\" = 'complete' AND cardinality(\"reports\".\"missing_sources\") = 0 AND \"reports\".\"content_hash\" IS NOT NULL AND \"reports\".\"published_at\" IS NOT NULL)\n       OR (\"reports\".\"status\" = 'incomplete' AND cardinality(\"reports\".\"missing_sources\") > 0 AND \"reports\".\"content_hash\" IS NOT NULL AND \"reports\".\"published_at\" IS NOT NULL)\n       OR (\"reports\".\"status\" = 'not_generated' AND cardinality(\"reports\".\"missing_sources\") > 0 AND \"reports\".\"content_hash\" IS NULL AND \"reports\".\"published_at\" IS NULL AND \"reports\".\"total_count\" = 0)"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.signin_snapshots": {
+      "name": "signin_snapshots",
+      "schema": "",
+      "columns": {
+        "report_id": {
+          "name": "report_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "sign_in_id": {
+          "name": "sign_in_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "sign_in_type": {
+          "name": "sign_in_type",
+          "type": "sign_in_type",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp (3) with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "error_code": {
+          "name": "error_code",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "applied_conditional_access_policies": {
+          "name": "applied_conditional_access_policies",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "device_detail": {
+          "name": "device_detail",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "record": {
+          "name": "record",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {
+        "signin_snapshots_report_id_sign_in_type_idx": {
+          "name": "signin_snapshots_report_id_sign_in_type_idx",
+          "columns": [
+            {
+              "expression": "report_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "sign_in_type",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "signin_snapshots_report_id_fkey": {
+          "name": "signin_snapshots_report_id_fkey",
+          "tableFrom": "signin_snapshots",
+          "tableTo": "reports",
+          "columnsFrom": [
+            "report_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "signin_snapshots_pkey": {
+          "name": "signin_snapshots_pkey",
+          "columns": [
+            "report_id",
+            "sign_in_id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "signin_snapshots_evidence_shape": {
+          "name": "signin_snapshots_evidence_shape",
+          "value": "jsonb_typeof(\"signin_snapshots\".\"applied_conditional_access_policies\") = 'array' AND jsonb_typeof(\"signin_snapshots\".\"device_detail\") = 'object' AND jsonb_typeof(\"signin_snapshots\".\"record\") = 'object'"
+        }
+      },
+      "isRLSEnabled": false
+    }
+  },
+  "enums": {
+    "public.report_status": {
+      "name": "report_status",
+      "schema": "public",
+      "values": [
+        "complete",
+        "incomplete",
+        "not_generated"
+      ]
+    },
+    "public.sign_in_type": {
+      "name": "sign_in_type",
+      "schema": "public",
+      "values": [
+        "interactiveUser",
+        "nonInteractiveUser",
+        "servicePrincipal",
+        "managedIdentity"
+      ]
+    }
+  },
+  "schemas": {},
+  "sequences": {},
+  "roles": {},
+  "policies": {},
+  "views": {},
+  "_meta": {
+    "columns": {},
+    "schemas": {},
+    "tables": {}
+  }
+}
