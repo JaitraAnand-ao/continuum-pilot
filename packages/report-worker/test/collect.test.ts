@@ -88,3 +88,28 @@ describe('the retry deadline (AC-5)', () => {
     expect(source.requested.length).toBeGreaterThan(5)
   })
 })
+
+describe('a Retry-After that is not a usable number', () => {
+  const deadline = new Date('2026-10-12T07:00:00.000Z')
+
+  it.each([Number.NaN, -1])('treats Retry-After %s as a plain failure with the capped backoff', async (seconds) => {
+    const clock = new FakeClock('2026-10-12T02:00:00.000Z')
+    const sleeper = new FakeSleeper(clock)
+    const source = pagedSource([[1]], { 0: [new GraphThrottledError(seconds)] })
+    const result = await collectAllPages(source.fetch, deadline, clock, sleeper)
+    expect(result).toEqual({ ok: true, items: [1] })
+    expect(sleeper.sleeps).toEqual([INITIAL_BACKOFF_MS])
+  })
+
+  it.each([Number.NaN, -1])('gives up a source throttled with Retry-After %s before 07:00 UTC', async (seconds) => {
+    const clock = new FakeClock('2026-10-12T02:00:00.000Z')
+    const sleeper = new FakeSleeper(clock)
+    /* Bounded, so a loop that never advances the clock ends instead of spinning forever. */
+    const failures = Array.from({ length: 100 }, () => new GraphThrottledError(seconds))
+    const source = pagedSource([[1]], { 0: failures })
+    const result = await collectAllPages(source.fetch, deadline, clock, sleeper)
+    expect(result).toEqual({ ok: false })
+    expect(clock.now().getTime()).toBeLessThanOrEqual(deadline.getTime())
+    expect(sleeper.sleeps.every((wait) => wait >= INITIAL_BACKOFF_MS && wait <= MAX_BACKOFF_MS)).toBe(true)
+  })
+})

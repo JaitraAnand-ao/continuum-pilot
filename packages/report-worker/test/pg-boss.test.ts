@@ -1,7 +1,13 @@
 import { randomUUID } from 'node:crypto'
 import PgBoss from 'pg-boss'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { createPgReportStore, GENERATE_QUEUE, registerReportWorker } from '../src/index.js'
+import {
+  createEmfMetricsSink,
+  createPgReportStore,
+  DEADLINE_CHECK_QUEUE,
+  GENERATE_QUEUE,
+  registerReportWorker,
+} from '../src/index.js'
 import { FakeClock, FakeSleeper, RecordingMetrics, ScriptedGraph, signIn } from './support/fakes.js'
 import { databaseUrl, reportSchema } from './support/postgres.js'
 
@@ -55,5 +61,57 @@ describe.skipIf(!databaseUrl)('report.generate through pg-boss on PostgreSQL', (
     expect((await scopedStore.listPublished()).filter((report) => report.reportDate === '2026-10-11')).toEqual([
       published,
     ])
+  }, 30_000)
+})
+
+describe.skipIf(!databaseUrl)('report.deadline-check through pg-boss on PostgreSQL', () => {
+  let database: Awaited<ReturnType<typeof reportSchema>>
+  let boss: PgBoss
+  const schema = `pgboss_${randomUUID().replaceAll('-', '')}`
+
+  beforeAll(async () => {
+    database = await reportSchema()
+    boss = new PgBoss({ connectionString: databaseUrl as string, schema, supervise: false, schedule: false })
+    boss.on('error', () => undefined)
+    await boss.start()
+  })
+  afterAll(async () => {
+    await boss?.stop({ graceful: false, wait: true })
+    await database?.pool.query(`DROP SCHEMA IF EXISTS ${schema} CASCADE`)
+    await database?.drop()
+  })
+
+  it('@AC-6 the 07:30 job completes and writes the alarm metric as an EMF line', async () => {
+    const clock = new FakeClock('2026-10-12T07:30:00.000Z')
+    const graph = new ScriptedGraph(clock, {})
+    const lines: string[] = []
+    await registerReportWorker(boss, {
+      clock,
+      sleeper: new FakeSleeper(clock),
+      signIns: graph,
+      risk: graph,
+      store: createPgReportStore(database.db),
+      metrics: createEmfMetricsSink((line) => lines.push(line), clock),
+    })
+
+    const id = (await boss.send(DEADLINE_CHECK_QUEUE, {})) as string
+    let job = await boss.getJobById(DEADLINE_CHECK_QUEUE, id)
+    for (let attempt = 0; attempt < 100 && !['completed', 'failed'].includes(job?.state ?? ''); attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 200))
+      job = await boss.getJobById(DEADLINE_CHECK_QUEUE, id)
+    }
+
+    expect(job?.state).toBe('completed')
+    expect(lines).toHaveLength(1)
+    const emitted = JSON.parse(lines[0] as string)
+    expect(emitted._aws.CloudWatchMetrics).toEqual([
+      {
+        Namespace: 'SigninReports/ReportWorker',
+        Dimensions: [[]],
+        Metrics: [{ Name: 'CompleteReportMissing', Unit: 'Count' }],
+      },
+    ])
+    expect(emitted.CompleteReportMissing).toBe(1)
+    expect(emitted.reportDate).toBe('2026-10-11')
   }, 30_000)
 })

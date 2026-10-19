@@ -26,6 +26,16 @@ export function reportDateFor(payload: GeneratePayload | null | undefined, clock
   return payload?.reportDate === undefined ? previousUtcDate(clock.now()) : parseReportDate(payload.reportDate)
 }
 
+/* pg-boss stores a failed job's error as its output; a store or Graph error may quote sign-in
+ * content, so the original is dropped and only a fixed message naming the date leaves the worker. */
+async function withFixedMessage<T>(message: string, run: () => Promise<T>): Promise<T> {
+  try {
+    return await run()
+  } catch {
+    throw new Error(message)
+  }
+}
+
 export async function registerReportWorker(boss: JobBoss, deps: GenerateDeps): Promise<void> {
   await boss.createQueue(GENERATE_QUEUE, {
     name: GENERATE_QUEUE,
@@ -37,9 +47,18 @@ export async function registerReportWorker(boss: JobBoss, deps: GenerateDeps): P
   await boss.schedule(DEADLINE_CHECK_QUEUE, DEADLINE_CHECK_CRON, {}, { tz: 'UTC' })
   await boss.work<GeneratePayload>(GENERATE_QUEUE, async (jobs) => {
     const outcomes: GenerateOutcome[] = []
-    for (const job of jobs) outcomes.push(await generateReport(reportDateFor(job.data, deps.clock), deps))
+    for (const job of jobs) {
+      const reportDate = reportDateFor(job.data, deps.clock)
+      outcomes.push(
+        await withFixedMessage(`report generation failed for ${reportDate}`, () => generateReport(reportDate, deps)),
+      )
+    }
     /* Only the outcome kind leaves the worker as job output: no sign-in content. */
     return outcomes.map((outcome) => ({ kind: outcome.kind }))
   })
-  await boss.work(DEADLINE_CHECK_QUEUE, async () => checkReportDeadline(deps))
+  await boss.work(DEADLINE_CHECK_QUEUE, async () =>
+    withFixedMessage(`report deadline check failed for ${previousUtcDate(deps.clock.now())}`, () =>
+      checkReportDeadline(deps),
+    ),
+  )
 }

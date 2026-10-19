@@ -97,6 +97,43 @@ describe('pg-boss registration', () => {
     expect(metrics.last('CompleteReportMissing')?.value).toBe(1)
   })
 
+  it('a failed run surfaces a fixed message without the sign-in id or UPN', async () => {
+    const { boss, deps, store } = setup()
+    store.publish = async () => {
+      throw new Error('insert failed for sign-in sign-in-0004242 by alice@contoso.example')
+    }
+    await registerReportWorker(boss, deps)
+
+    const failure = boss.handlers.get(GENERATE_QUEUE)?.([{ id: 'job-4', data: { reportDate: '2026-10-11' } }])
+
+    await expect(failure).rejects.toThrow('report generation failed for 2026-10-11')
+    const surfaced = await failure?.then(
+      () => '',
+      (problem: Error) => `${problem.message} ${String(problem.cause ?? '')} ${problem.stack ?? ''}`,
+    )
+    expect(surfaced).not.toContain('sign-in-0004242')
+    expect(surfaced).not.toContain('alice@contoso.example')
+  })
+
+  it('a failed deadline check surfaces a fixed message without the original detail', async () => {
+    const { boss, deps, clock, store } = setup()
+    store.findPublished = async () => {
+      throw new Error('lookup failed near sign-in-0004242 for alice@contoso.example')
+    }
+    await registerReportWorker(boss, deps)
+    clock.set('2026-10-12T07:30:00.000Z')
+
+    const failure = boss.handlers.get(DEADLINE_CHECK_QUEUE)?.([{ id: 'job-5', data: {} }])
+
+    await expect(failure).rejects.toThrow('report deadline check failed for 2026-10-11')
+    const surfaced = await failure?.then(
+      () => '',
+      (problem: Error) => `${problem.message} ${String(problem.cause ?? '')} ${problem.stack ?? ''}`,
+    )
+    expect(surfaced).not.toContain('sign-in-0004242')
+    expect(surfaced).not.toContain('alice@contoso.example')
+  })
+
   it('rejects a payload whose date is malformed', () => {
     const clock = new FakeClock('2026-10-12T02:00:00.000Z')
     expect(reportDateFor(null, clock)).toBe('2026-10-11')

@@ -26,8 +26,11 @@ export async function collectAllPages<T>(
       cursor = page.nextCursor
       backoff = INITIAL_BACKOFF_MS
     } catch (problem) {
-      const wait = problem instanceof GraphThrottledError ? problem.retryAfterSeconds * 1000 : backoff
-      if (!(problem instanceof GraphThrottledError)) backoff = Math.min(backoff * 2, MAX_BACKOFF_MS)
+      /* A Retry-After that is not a finite, non-negative number is no guide: back off as for any failure. */
+      const retryAfter = problem instanceof GraphThrottledError ? problem.retryAfterSeconds : Number.NaN
+      const throttled = Number.isFinite(retryAfter) && retryAfter >= 0
+      const wait = throttled ? retryAfter * 1000 : backoff
+      if (!throttled) backoff = Math.min(backoff * 2, MAX_BACKOFF_MS)
       if (clock.now().getTime() + wait > deadline.getTime()) return { ok: false }
       await sleeper.sleep(wait)
     }
