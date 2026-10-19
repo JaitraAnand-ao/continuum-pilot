@@ -1,0 +1,14 @@
+{
+  "name": "@signin-reports/db",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "drizzle-orm": "^0.45.4",
+    "pg": "^8.0.0"
+  },
+  "devDependencies": {
+    "drizzle-kit": "^0.31.0",
+    "@types/pg": "^8.0.0"
+  }
+}

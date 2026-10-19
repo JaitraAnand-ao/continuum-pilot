@@ -1,0 +1,39 @@
+# AD-19: the full stack runs locally under Compose behind the same edge routing as
+# production. The approved scaffold (step 10, v4) names ten services; the ones built
+# from source arrive with their parts and are listed here commented out so the file
+# documents the full shape from day one.
+services:
+  postgres: # SVC-5
+    image: postgres:18
+    environment:
+      POSTGRES_DB: signin_reports
+      POSTGRES_USER: signin_reports
+      POSTGRES_PASSWORD: signin_reports
+    ports:
+      - '5432:5432'
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./packages/db/docker-init:/docker-entrypoint-initdb.d:ro
+
+  otel-collector: # SVC-9 — the AD-22 allowlist config, same file the ADOT sidecar uses
+    image: public.ecr.aws/aws-observability/aws-otel-collector:latest
+    command: ['--config=/etc/otel/config.yaml']
+    volumes:
+      - ./infra/otel-collector:/etc/otel:ro
+
+  jaeger: # SVC-10 — local trace viewing (AD-21)
+    image: jaegertracing/jaeger:2.3.0
+    ports:
+      - '16686:16686'
+
+  # The remaining services arrive with their parts:
+  # edge (SVC-7, infra/edge — nginx, TLS from npm run certs:local, ports 443)
+  # keycloak (SVC-6, infra/keycloak — FIPS build from source)
+  # api (SVC-2, packages/api)
+  # web (SVC-1, built by api's image — AD-3 serves the SPA assets)
+  # report-worker (SVC-3, packages/report-worker)
+  # mail-worker (SVC-4, packages/mail-worker)
+  # graph-fake (SVC-8, testing/graph-fake — local and test only, never production)
+
+volumes:
+  postgres-data:

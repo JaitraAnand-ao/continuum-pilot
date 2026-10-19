@@ -1,0 +1,153 @@
+# Generated from the definition of done — never edited by hand (rule 27).
+name: ci
+on:
+  pull_request:
+  push:
+    branches: [main]
+jobs:
+  every-criterion-tested:
+    # npm test: every acceptance criterion has a test.
+    name: every-criterion-tested
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm test
+  coverage-at-90:
+    # npm test -- --coverage, 90% line and branch per package.
+    name: coverage-at-90
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm test -- --coverage
+  lint-and-types-clean:
+    # npm run lint and npm run typecheck (ESLint, Prettier, tsc --noEmit).
+    name: lint-and-types-clean
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run typecheck
+  scans-pass:
+    # npm run scan: dependency audit, static analysis, gitleaks.
+    name: scans-pass
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run scan
+  trace-crosses-every-call:
+    # npm run check:trace: every call and job is a span under the caller's trace, redacted.
+    name: trace-crosses-every-call
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run check:trace
+  playwright-follows-gherkin:
+    # npx playwright test, tests named for each story's Feature and Scenario.
+    name: playwright-follows-gherkin
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx playwright test
+  axe-clean:
+    # npm run test:axe: no serious or critical axe violation.
+    name: axe-clean
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run test:axe
+  keyboard-pass-recorded:
+    # npm run check:keyboard-pass: a manual keyboard and screen reader pass is recorded.
+    name: keyboard-pass-recorded
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run check:keyboard-pass
+  contracts-honoured:
+    # npm run test:contracts against the committed contracts.
+    name: contracts-honoured
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run test:contracts
+  openapi-regenerated:
+    # npm run openapi then git diff --exit-code.
+    name: openapi-regenerated
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run openapi
+      - run: git diff --exit-code
+  migration-committed:
+    # npm run check:migrations: every schema change is a committed generated migration.
+    name: migration-committed
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run check:migrations
+  image-scanned:
+    # npm run scan:image: digest-pinned, non-root, SBOM, Trivy clean of high and critical.
+    name: image-scanned
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run scan:image

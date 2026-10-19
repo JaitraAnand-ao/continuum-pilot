@@ -1,0 +1,9 @@
+{
+  "name": "@signin-reports/report-worker",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "pg-boss": "^10.0.0"
+  }
+}

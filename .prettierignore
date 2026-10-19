@@ -1,0 +1,8 @@
+node_modules
+dist
+coverage
+playwright-report
+test-results
+package-lock.json
+packages/api/openapi.json
+packages/db/migrations

@@ -1,0 +1,20 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "IF-27",
+    "version": "0.1.0",
+    "description": "Placeholder for the build plan contract IF-27. Mock: prism mock contracts/IF-27.json --port 4027. The owning part commits the real contract; consumers test against the mock."
+  },
+  "paths": {
+    "/health": {
+      "get": {
+        "operationId": "if27Health",
+        "responses": {
+          "200": {
+            "description": "the mock is serving IF-27"
+          }
+        }
+      }
+    }
+  }
+}
