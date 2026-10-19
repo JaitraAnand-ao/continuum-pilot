@@ -1,5 +1,5 @@
-/* CMP-2, the BFF: sign-in (IF-1), its callback, sign-out, the current account (IF-4), the idle keep-alive and
- * the reader gate on report endpoints. Tokens never leave the server; the browser holds only the Strict
+/* CMP-2, the BFF: sign-in (IF-1), its callback (IF-2), sign-out (IF-3), the current account (IF-4), the idle
+ * keep-alive (IF-5) and the reader gate every report endpoint mounts (IF-6). Tokens never leave the server; the browser holds only the Strict
  * session cookie (AD-5). The server decides access on every route (AD-7). */
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from 'fastify'
 import type { AuditSink } from './audit.js'
@@ -30,17 +30,12 @@ import type { Secret } from './secret.js'
 import { absoluteExpiresAt, idleExpiresAt, sessionState } from './session/policy.js'
 import type { SessionRecord, SessionStore } from './session/store.js'
 
-export interface ReportReader {
-  daily(date: string): Promise<unknown>
-}
-
 export interface AppDependencies {
   oidc: OidcClient
   sessions: SessionStore
   audit: AuditSink
   clock: Clock
   sessionKey: Secret<Buffer>
-  reports?: ReportReader
 }
 
 interface LoginTransaction {
@@ -89,27 +84,15 @@ const meSchema = {
   },
 } as const
 
-export function buildApp(deps: AppDependencies): FastifyInstance {
-  const app = Fastify({ logger: false, trustProxy: true, ajv: { customOptions: { removeAdditional: false } } })
+const sendProblem = (reply: FastifyReply, body: Problem) =>
+  reply.code(body.status).type(PROBLEM_CONTENT_TYPE).header('cache-control', 'no-store').send(body)
+const fail = (request: FastifyRequest, reply: FastifyReply, kind: ProblemKind) =>
+  sendProblem(reply, problem(kind, request.traceId))
 
-  app.decorateRequest('traceId', '')
-  app.decorateRequest('activeSession', undefined)
-  app.addHook('onRequest', async (request) => {
-    request.traceId = traceIdFrom(request.headers.traceparent)
-  })
-
-  const sendProblem = (reply: FastifyReply, body: Problem) =>
-    reply.code(body.status).type(PROBLEM_CONTENT_TYPE).header('cache-control', 'no-store').send(body)
-  const fail = (request: FastifyRequest, reply: FastifyReply, kind: ProblemKind) =>
-    sendProblem(reply, problem(kind, request.traceId))
-
-  app.setErrorHandler((error: { validation?: unknown }, request, reply) =>
-    fail(request, reply, error.validation ? 'invalid-request' : 'internal'),
-  )
-  app.setNotFoundHandler((request, reply) => fail(request, reply, 'not-found'))
-
-  /* Resolves the session cookie; an unknown, idle-expired or absolute-expired session answers 401. */
-  const authenticate = (options: { touch: boolean }) => async (request: FastifyRequest, reply: FastifyReply) => {
+/* Resolves the session cookie; an unknown, idle-expired or absolute-expired session answers 401. */
+export const authenticate =
+  (deps: Pick<AppDependencies, 'sessions' | 'clock'>, options: { touch: boolean }) =>
+  async (request: FastifyRequest, reply: FastifyReply) => {
     const id = readCookie(request.headers.cookie, SESSION_COOKIE)
     const idHash = id === undefined ? undefined : sha256Hex(id)
     const record = idHash === undefined ? undefined : await deps.sessions.find(idHash)
@@ -126,28 +109,49 @@ export function buildApp(deps: AppDependencies): FastifyInstance {
     request.activeSession = { idHash, record }
   }
 
-  const deny = async (request: FastifyRequest, reply: FastifyReply, body: Problem) => {
-    const account = request.activeSession?.record.account ?? 'unknown'
-    await deps.audit.record({
-      type: 'access-denied',
-      account,
-      route: request.routeOptions.url ?? request.url,
-      traceId: request.traceId,
-      at: deps.clock.now(),
-    })
-    return sendProblem(reply, body)
-  }
+const deny = async (
+  deps: Pick<AppDependencies, 'audit' | 'clock'>,
+  request: FastifyRequest,
+  reply: FastifyReply,
+  body: Problem,
+) => {
+  const account = request.activeSession?.record.account ?? 'unknown'
+  await deps.audit.record({
+    type: 'access-denied',
+    account,
+    route: request.routeOptions.url ?? request.url,
+    traceId: request.traceId,
+    at: deps.clock.now(),
+  })
+  return sendProblem(reply, body)
+}
 
-  const requireReader = async (request: FastifyRequest, reply: FastifyReply) => {
+/* The reader gate (IF-6), mounted after authenticate on every report endpoint; a denial is audited. */
+export const requireReader =
+  (deps: Pick<AppDependencies, 'audit' | 'clock'>) => async (request: FastifyRequest, reply: FastifyReply) => {
     if (!canReadReports(request.activeSession?.record.roles ?? [])) {
-      return deny(request, reply, problem('forbidden', request.traceId))
+      return deny(deps, request, reply, problem('forbidden', request.traceId))
     }
   }
+
+export function buildApp(deps: AppDependencies): FastifyInstance {
+  const app = Fastify({ logger: false, trustProxy: true, ajv: { customOptions: { removeAdditional: false } } })
+
+  app.decorateRequest('traceId', '')
+  app.decorateRequest('activeSession', undefined)
+  app.addHook('onRequest', async (request) => {
+    request.traceId = traceIdFrom(request.headers.traceparent)
+  })
+
+  app.setErrorHandler((error: { validation?: unknown }, request, reply) =>
+    fail(request, reply, error.validation ? 'invalid-request' : 'internal'),
+  )
+  app.setNotFoundHandler((request, reply) => fail(request, reply, 'not-found'))
 
   const requireAnyRole = async (request: FastifyRequest, reply: FastifyReply) => {
     const record = request.activeSession?.record
     if (record && accessFor(record.roles) === 'none') {
-      return deny(request, reply, noAccessProblem(record.account, request.traceId))
+      return deny(deps, request, reply, noAccessProblem(record.account, request.traceId))
     }
   }
 
@@ -220,6 +224,15 @@ export function buildApp(deps: AppDependencies): FastifyInstance {
       reply.header('cache-control', 'no-store')
       const cleared = [clearLoginCookie()]
       const now = deps.clock.now()
+      const sealed = readCookie(request.headers.cookie, LOGIN_COOKIE)
+      const transaction = parseTransaction(sealed && open(deps.sessionKey, sealed, LOGIN_AAD))
+      const fresh = transaction && now.getTime() - transaction.startedAt < LOGIN_TRANSACTION_SECONDS * 1000
+      const { code, state } = request.query
+      /* Only a callback answering this browser's own sign-in is acted on, an error included: an error without the
+       * transaction cookie, or with another state, is refused and writes no audit event. */
+      if (!transaction || !fresh || !state || !safeEqual(state, transaction.state)) {
+        return fail(request, reply.header('set-cookie', cleared), 'invalid-login-transaction')
+      }
 
       if (request.query.error !== undefined) {
         const entra = ENTRA_CODE.exec(request.query.error_description ?? '')?.[0]
@@ -230,13 +243,7 @@ export function buildApp(deps: AppDependencies): FastifyInstance {
         return reply.header('set-cookie', cleared).redirect(`/signin/error?${target.toString()}`)
       }
 
-      const sealed = readCookie(request.headers.cookie, LOGIN_COOKIE)
-      const transaction = parseTransaction(sealed && open(deps.sessionKey, sealed, LOGIN_AAD))
-      const fresh = transaction && now.getTime() - transaction.startedAt < LOGIN_TRANSACTION_SECONDS * 1000
-      const { code, state } = request.query
-      if (!transaction || !fresh || !code || !state || !safeEqual(state, transaction.state)) {
-        return fail(request, reply.header('set-cookie', cleared), 'invalid-login-transaction')
-      }
+      if (!code) return fail(request, reply.header('set-cookie', cleared), 'invalid-login-transaction')
 
       let identity
       let refreshToken: string
@@ -271,7 +278,7 @@ export function buildApp(deps: AppDependencies): FastifyInstance {
     '/auth/logout',
     {
       schema: { response: { 204: { type: 'null' }, ...problemResponses(401) } },
-      preHandler: authenticate({ touch: false }),
+      preHandler: authenticate(deps, { touch: false }),
     },
     async (request, reply) => {
       const { idHash, record } = request.activeSession as ActiveSession
@@ -289,7 +296,7 @@ export function buildApp(deps: AppDependencies): FastifyInstance {
     '/api/v1/me',
     {
       schema: { response: { 200: meSchema, ...problemResponses(401, 403) } },
-      preHandler: [authenticate({ touch: false }), requireAnyRole],
+      preHandler: [authenticate(deps, { touch: false }), requireAnyRole],
     },
     async (request, reply) => {
       const { record } = request.activeSession as ActiveSession
@@ -301,31 +308,11 @@ export function buildApp(deps: AppDependencies): FastifyInstance {
     '/api/v1/session/keepalive',
     {
       schema: { response: { 200: meSchema, ...problemResponses(401, 403) } },
-      preHandler: [authenticate({ touch: true }), requireAnyRole],
+      preHandler: [authenticate(deps, { touch: true }), requireAnyRole],
     },
     async (request, reply) => {
       const { record } = request.activeSession as ActiveSession
       return reply.header('cache-control', 'no-store').send(sessionView(record))
-    },
-  )
-
-  app.get<{ Params: { date: string } }>(
-    '/api/v1/reports/daily/:date',
-    {
-      schema: {
-        params: {
-          type: 'object',
-          required: ['date'],
-          properties: { date: { type: 'string', pattern: '^\\d{4}-\\d{2}-\\d{2}$' } },
-        },
-        response: problemResponses(400, 401, 403, 404),
-      },
-      preHandler: [authenticate({ touch: true }), requireReader],
-    },
-    async (request, reply) => {
-      const report = deps.reports && (await deps.reports.daily(request.params.date))
-      if (report === undefined) return fail(request, reply, 'not-found')
-      return reply.header('cache-control', 'no-store').send(report)
     },
   )
 

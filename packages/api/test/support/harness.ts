@@ -2,7 +2,7 @@
 import { randomBytes } from 'node:crypto'
 import type { FastifyInstance } from 'fastify'
 import { vi } from 'vitest'
-import { buildApp, type ReportReader } from '../../src/app.js'
+import { buildApp, type AppDependencies } from '../../src/app.js'
 import { InMemoryAuditSink } from '../../src/audit.js'
 import { KeycloakOidcClient } from '../../src/auth/oidc.js'
 import type { Clock } from '../../src/clock.js'
@@ -54,7 +54,10 @@ export interface Harness {
   close(): Promise<void>
 }
 
-export async function startHarness(options: { reports?: ReportReader; start?: string } = {}): Promise<Harness> {
+/* Registers test-only routes on the harness app before it is ready, given the stores and Clock it runs on. */
+export type RegisterRoutes = (app: FastifyInstance, deps: Pick<AppDependencies, 'sessions' | 'audit' | 'clock'>) => void
+
+export async function startHarness(options: { routes?: RegisterRoutes; start?: string } = {}): Promise<Harness> {
   const keycloak = await new FakeKeycloak().start()
   const clock = new ManualClock(options.start ?? '2026-10-19T08:00:00.000Z')
   keycloak.nowMs = () => clock.now().getTime()
@@ -68,14 +71,8 @@ export async function startHarness(options: { reports?: ReportReader; start?: st
     redirectUri: `${ORIGIN}/auth/callback`,
     idpHint: 'microsoft',
   })
-  const app = buildApp({
-    oidc,
-    sessions,
-    audit,
-    clock,
-    sessionKey,
-    ...(options.reports ? { reports: options.reports } : {}),
-  })
+  const app = buildApp({ oidc, sessions, audit, clock, sessionKey })
+  options.routes?.(app, { sessions, audit, clock })
   await app.ready()
   return {
     app,

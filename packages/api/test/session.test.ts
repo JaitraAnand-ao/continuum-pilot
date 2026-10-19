@@ -2,15 +2,27 @@
  * idle end, the 8-hour absolute end, and sign-out ending the local and the Keycloak session. */
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { sha256Hex } from '../src/crypto.js'
-import { loadContract, responseSchema, violations } from './support/contract.js'
+import { declaresNoContent, headerSchema, loadContract, responseSchema, violations } from './support/contract.js'
 import { OUTSIDER, READER, setCookies, signIn, startHarness, type Harness } from './support/harness.js'
+import { reportGateRoute } from './support/report-gate.js'
 
-const ok = responseSchema(loadContract('IF-4'), '/api/v1/me', 'get', 200, 'application/json')
+const IF3 = loadContract('IF-3')
+const IF5 = loadContract('IF-5')
+const ok = responseSchema(IF5, '/api/v1/session/keepalive', 'post', 200, 'application/json')
+const noAccess = responseSchema(IF5, '/api/v1/session/keepalive', 'post', 403, 'application/problem+json')
+const logoutUnauthenticated = responseSchema(IF3, '/auth/logout', 'post', 401, 'application/problem+json')
+const gateUnauthenticated = responseSchema(
+  loadContract('IF-6'),
+  '/api/v1/reports/daily/{date}',
+  'get',
+  401,
+  'application/problem+json',
+)
 const MINUTE = 60_000
 let harness: Harness
 
 beforeEach(async () => {
-  harness = await startHarness({ reports: { daily: async (date) => ({ date }) } })
+  harness = await startHarness({ routes: reportGateRoute() })
 })
 afterEach(async () => {
   await harness.close()
@@ -56,6 +68,7 @@ describe('idle limit', () => {
     const expired = await report(sessionCookie)
     expect(expired.statusCode).toBe(401)
     expect(expired.json().type).toBe('/problems/unauthenticated')
+    expect(await violations(gateUnauthenticated, expired.json())).toEqual([])
     expect(setCookies(expired.headers)).toEqual([
       '__Host-sr_session=; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=0',
     ])
@@ -75,6 +88,7 @@ describe('idle limit', () => {
     const response = await keepAlive(sessionCookie)
     expect(response.statusCode).toBe(403)
     expect(response.json().type).toBe('/problems/no-access')
+    expect(await violations(noAccess, response.json())).toEqual([])
     expect(harness.audit.events.map((event) => event.type)).toEqual(['access-denied'])
   })
 })
@@ -111,6 +125,9 @@ describe('POST /auth/logout', () => {
     expect(setCookies(response.headers)).toEqual([
       '__Host-sr_session=; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=0',
     ])
+    expect(declaresNoContent(IF3, '/auth/logout', 'post', 204)).toBe(true)
+    const cleared = headerSchema(IF3, '/auth/logout', 'post', 204, 'Set-Cookie')
+    expect(await violations(cleared, setCookies(response.headers)[0])).toEqual([])
     expect(harness.sessions.rows.has(sha256Hex(session ?? ''))).toBe(false)
     expect(harness.keycloak.endedRefreshTokens).toEqual(['refresh-token-1-secret-value'])
     expect((await me(sessionCookie)).statusCode).toBe(401)
@@ -133,6 +150,7 @@ describe('POST /auth/logout', () => {
   it('answers 401 without a session', async () => {
     const response = await harness.app.inject({ method: 'POST', url: '/auth/logout' })
     expect(response.statusCode).toBe(401)
+    expect(await violations(logoutUnauthenticated, response.json())).toEqual([])
     expect(harness.keycloak.logoutRequests).toEqual([])
   })
 })

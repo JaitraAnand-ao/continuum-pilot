@@ -1,0 +1,154 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Entra Sign-In Reports BFF - stay signed in",
+    "version": "1.0.0",
+    "description": "IF-5, provided by ST-1 (CMP-2). 'Stay signed in' on the idle warning: restarts the 15-minute idle limit, never past the 8-hour absolute limit (ST-1 AC-9), and answers the same account view as IF-4."
+  },
+  "paths": {
+    "/api/v1/session/keepalive": {
+      "post": {
+        "operationId": "keepAlive",
+        "summary": "Record activity and return the session limits",
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The session, with the idle limit restarted.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["account", "displayName", "roles", "authTime", "idleExpiresAt", "absoluteExpiresAt"],
+                  "properties": {
+                    "account": {
+                      "type": "string",
+                      "description": "UPN of the signed-in account, shown on the top bar and the denied frame.",
+                      "examples": ["m.duarte@contoso.com"]
+                    },
+                    "displayName": {
+                      "type": "string"
+                    },
+                    "roles": {
+                      "type": "array",
+                      "uniqueItems": true,
+                      "items": {
+                        "type": "string",
+                        "enum": ["reader", "config.read", "config.write", "config.approve"]
+                      }
+                    },
+                    "authTime": {
+                      "type": "string",
+                      "format": "date-time",
+                      "description": "When the user last authenticated at Microsoft (UTC)."
+                    },
+                    "idleExpiresAt": {
+                      "type": "string",
+                      "format": "date-time",
+                      "description": "15-minute idle limit; the SPA warns at least 2 minutes before."
+                    },
+                    "absoluteExpiresAt": {
+                      "type": "string",
+                      "format": "date-time",
+                      "description": "8-hour absolute limit."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid session, or it has passed its idle or absolute limit.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in but in neither the reader nor the administrator group (type /problems/no-access). An access-denied audit event is written.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NoAccessProblem"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "sessionCookie": {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "__Host-sr_session",
+        "description": "Opaque httpOnly, Secure, SameSite=Strict session cookie issued by the BFF (AD-5)."
+      }
+    },
+    "schemas": {
+      "Problem": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["type", "title", "status", "traceId"],
+        "properties": {
+          "type": {
+            "type": "string",
+            "format": "uri-reference"
+          },
+          "title": {
+            "type": "string"
+          },
+          "status": {
+            "type": "integer"
+          },
+          "traceId": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{32}$"
+          }
+        }
+      },
+      "NoAccessProblem": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["type", "title", "status", "traceId"],
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "/problems/no-access"
+          },
+          "title": {
+            "type": "string",
+            "pattern": "^You don't have access\\. Signed in as \\S+@\\S+\\.$",
+            "description": "Always 'You don't have access. Signed in as <UPN>.', where <UPN> is the signed-in account's UPN from the validated Keycloak token in the session. SCR-1's denied frame shows the fixed heading 'You don't have access', renders this title verbatim as the line naming the account, and uses it as the assertive alert text (ST-1 AC-5).",
+            "examples": ["You don't have access. Signed in as m.duarte@contoso.com."]
+          },
+          "status": {
+            "type": "integer",
+            "const": 403
+          },
+          "traceId": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{32}$"
+          }
+        }
+      }
+    }
+  }
+}

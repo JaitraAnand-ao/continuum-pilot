@@ -6,7 +6,7 @@ import { loadConfig } from './config.js'
 import type { AuditSink } from './audit.js'
 import type { SessionStore } from './session/store.js'
 
-export { buildApp, type AppDependencies, type ReportReader } from './app.js'
+export { authenticate, buildApp, requireReader, type AppDependencies } from './app.js'
 export { loadConfig, type ApiConfig } from './config.js'
 export { KeycloakOidcClient, type OidcClient } from './auth/oidc.js'
 export { InMemorySessionStore, type SessionRecord, type SessionStore } from './session/store.js'
@@ -17,7 +17,7 @@ export type { Clock } from './clock.js'
 /* Wires the BFF from the environment; the stores are the adapters CMP-5 provides. */
 export function createServer(
   env: Record<string, string | undefined>,
-  ports: { sessions: SessionStore; audit: AuditSink } & Partial<Pick<AppDependencies, 'clock' | 'reports'>>,
+  ports: { sessions: SessionStore; audit: AuditSink } & Partial<Pick<AppDependencies, 'clock'>>,
 ) {
   const config = loadConfig(env)
   const oidc = new KeycloakOidcClient({ ...config.oidc, redirectUri: config.redirectUri })

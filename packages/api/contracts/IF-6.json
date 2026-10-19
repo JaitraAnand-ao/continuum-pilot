@@ -1,0 +1,64 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Entra Sign-In Reports BFF - report reader gate",
+    "version": "1.0.0",
+    "description": "IF-6, provided by ST-1 (CMP-2). The gate every report endpoint mounts before its handler (AD-7, ST-1 AC-5 and AC-7): no valid session is 401, a session without the reader role is 403, audited as access-denied, and no report data is returned. The 200 of each report endpoint belongs to the story that serves it; this contract fixes only the gate's answers, shown on the daily report's address."
+  },
+  "paths": {
+    "/api/v1/reports/daily/{date}": {
+      "get": {
+        "operationId": "reportGate",
+        "summary": "The reader gate's answers on a report endpoint",
+        "security": [{ "sessionCookie": [] }],
+        "parameters": [
+          { "name": "date", "in": "path", "required": true, "schema": { "type": "string", "format": "date" } }
+        ],
+        "responses": {
+          "401": {
+            "description": "No valid session (type /problems/unauthenticated).",
+            "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/Problem" } } }
+          },
+          "403": {
+            "description": "The session lacks the reader role (type /problems/forbidden). problem+json carrying only type, title, status and traceId.",
+            "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/ForbiddenProblem" } } }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "sessionCookie": {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "__Host-sr_session",
+        "description": "Opaque httpOnly, Secure, SameSite=Strict session cookie issued by the BFF (AD-5)."
+      }
+    },
+    "schemas": {
+      "Problem": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["type", "title", "status", "traceId"],
+        "properties": {
+          "type": { "type": "string", "format": "uri-reference" },
+          "title": { "type": "string" },
+          "status": { "type": "integer" },
+          "traceId": { "type": "string", "pattern": "^[0-9a-f]{32}$" }
+        }
+      },
+      "ForbiddenProblem": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["type", "title", "status", "traceId"],
+        "properties": {
+          "type": { "type": "string", "const": "/problems/forbidden" },
+          "title": { "type": "string" },
+          "status": { "type": "integer", "const": 403 },
+          "traceId": { "type": "string", "pattern": "^[0-9a-f]{32}$" }
+        }
+      }
+    }
+  }
+}

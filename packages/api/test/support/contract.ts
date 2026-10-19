@@ -32,6 +32,19 @@ export function responseSchema(contract: Json, path: string, method: string, sta
   return deref(contract, ((response.content as Json)[type] as Json).schema) as Json
 }
 
+export function headerSchema(contract: Json, path: string, method: string, status: number, name: string): Json {
+  const operation = ((contract.paths as Json)[path] as Json)[method] as Json
+  const response = (operation.responses as Json)[String(status)] as Json
+  return deref(contract, ((response.headers as Json)[name] as Json).schema) as Json
+}
+
+/* True when the contract declares the status with no body, such as a 204. */
+export function declaresNoContent(contract: Json, path: string, method: string, status: number): boolean {
+  const operation = ((contract.paths as Json)[path] as Json)[method] as Json
+  const response = (operation.responses as Json)[String(status)] as Json | undefined
+  return response !== undefined && response.content === undefined
+}
+
 export function parameterSchema(contract: Json, path: string, method: string, name: string): Json {
   const operation = ((contract.paths as Json)[path] as Json)[method] as Json
   const parameter = (operation.parameters as Json[]).find((candidate) => candidate.name === name) as Json

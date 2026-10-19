@@ -1,0 +1,57 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Entra Sign-In Reports BFF - sign out",
+    "version": "1.0.0",
+    "description": "IF-3, provided by ST-1 (CMP-2). Ends the local session and the Keycloak session (ST-1 AC-9); the old session cookie is answered 401 afterwards."
+  },
+  "paths": {
+    "/auth/logout": {
+      "post": {
+        "operationId": "logout",
+        "summary": "End the session",
+        "security": [{ "sessionCookie": [] }],
+        "responses": {
+          "204": {
+            "description": "The session is over. A Keycloak that cannot be reached does not keep it alive.",
+            "headers": {
+              "Set-Cookie": {
+                "schema": {
+                  "type": "string",
+                  "const": "__Host-sr_session=; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=0"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid session.",
+            "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/Problem" } } }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "sessionCookie": {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "__Host-sr_session",
+        "description": "Opaque httpOnly, Secure, SameSite=Strict session cookie issued by the BFF (AD-5)."
+      }
+    },
+    "schemas": {
+      "Problem": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["type", "title", "status", "traceId"],
+        "properties": {
+          "type": { "type": "string", "format": "uri-reference" },
+          "title": { "type": "string" },
+          "status": { "type": "integer" },
+          "traceId": { "type": "string", "pattern": "^[0-9a-f]{32}$" }
+        }
+      }
+    }
+  }
+}
