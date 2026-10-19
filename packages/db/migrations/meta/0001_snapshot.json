@@ -1,0 +1,171 @@
+{
+  "id": "16bf3632-dfc2-47eb-92d5-2032d848c14b",
+  "prevId": "f63d28ac-90ea-4727-adc6-3f21ac3d47f9",
+  "version": "7",
+  "dialect": "postgresql",
+  "tables": {
+    "public.report": {
+      "name": "report",
+      "schema": "",
+      "columns": {
+        "report_date": {
+          "name": "report_date",
+          "type": "date",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "window_start": {
+          "name": "window_start",
+          "type": "timestamp(3) with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "window_end": {
+          "name": "window_end",
+          "type": "timestamp(3) with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "missing_sources": {
+          "name": "missing_sources",
+          "type": "text[]",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "total": {
+          "name": "total",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "successful": {
+          "name": "successful",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "failed": {
+          "name": "failed",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "snapshot": {
+          "name": "snapshot",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "content_hash": {
+          "name": "content_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "published_at": {
+          "name": "published_at",
+          "type": "timestamp(3) with time zone",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "report_window_is_the_utc_day": {
+          "name": "report_window_is_the_utc_day",
+          "value": "\"report\".\"window_start\" = (\"report\".\"report_date\"::timestamp AT TIME ZONE 'UTC') AND \"report\".\"window_end\" = \"report\".\"window_start\" + interval '1 day'"
+        },
+        "report_status_known": {
+          "name": "report_status_known",
+          "value": "\"report\".\"status\" IN ('complete', 'incomplete')"
+        },
+        "report_missing_sources_known": {
+          "name": "report_missing_sources_known",
+          "value": "\"report\".\"missing_sources\" <@ ARRAY['signIns.interactiveUser', 'signIns.nonInteractiveUser', 'signIns.servicePrincipal', 'signIns.managedIdentity', 'identityProtection.riskDetections']::text[]"
+        },
+        "report_complete_iff_nothing_missing": {
+          "name": "report_complete_iff_nothing_missing",
+          "value": "(\"report\".\"status\" = 'complete') = (cardinality(\"report\".\"missing_sources\") = 0)"
+        },
+        "report_totals_add_up": {
+          "name": "report_totals_add_up",
+          "value": "\"report\".\"successful\" >= 0 AND \"report\".\"failed\" >= 0 AND \"report\".\"total\" = \"report\".\"successful\" + \"report\".\"failed\""
+        },
+        "report_snapshot_shape": {
+          "name": "report_snapshot_shape",
+          "value": "coalesce(jsonb_typeof(\"report\".\"snapshot\" -> 'signIns') = 'array' AND jsonb_typeof(\"report\".\"snapshot\" -> 'riskDetections') = 'array', false)"
+        },
+        "report_content_hash_sha256_hex": {
+          "name": "report_content_hash_sha256_hex",
+          "value": "\"report\".\"content_hash\" ~ '^[0-9a-f]{64}$'"
+        },
+        "report_published_after_window": {
+          "name": "report_published_after_window",
+          "value": "\"report\".\"published_at\" >= \"report\".\"window_end\""
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.report_not_generated": {
+      "name": "report_not_generated",
+      "schema": "",
+      "columns": {
+        "report_date": {
+          "name": "report_date",
+          "type": "date",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "missing_sources": {
+          "name": "missing_sources",
+          "type": "text[]",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "recorded_at": {
+          "name": "recorded_at",
+          "type": "timestamp(3) with time zone",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "report_not_generated_missing_sources_known": {
+          "name": "report_not_generated_missing_sources_known",
+          "value": "cardinality(\"report_not_generated\".\"missing_sources\") > 0 AND \"report_not_generated\".\"missing_sources\" <@ ARRAY['signIns.interactiveUser', 'signIns.nonInteractiveUser', 'signIns.servicePrincipal', 'signIns.managedIdentity', 'identityProtection.riskDetections']::text[]"
+        },
+        "report_not_generated_after_day": {
+          "name": "report_not_generated_after_day",
+          "value": "\"report_not_generated\".\"recorded_at\" >= ((\"report_not_generated\".\"report_date\" + 1)::timestamp AT TIME ZONE 'UTC')"
+        }
+      },
+      "isRLSEnabled": false
+    }
+  },
+  "enums": {},
+  "schemas": {},
+  "views": {},
+  "sequences": {},
+  "roles": {},
+  "policies": {},
+  "_meta": {
+    "columns": {},
+    "schemas": {},
+    "tables": {}
+  }
+}

@@ -10,5 +10,8 @@
   "devDependencies": {
     "drizzle-kit": "^0.31.0",
     "@types/pg": "^8.0.0"
+  },
+  "scripts": {
+    "db:generate": "drizzle-kit generate"
   }
 }
