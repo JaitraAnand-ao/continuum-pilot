@@ -119,19 +119,38 @@ describe.skipIf(!testDatabaseUrl)('audit_events (append-only, hash-chained, on r
     await expect(fresh.pool.query(`TRUNCATE audit_events`)).rejects.toThrow('audit_events is append-only')
   })
 
+  it('refuses an append outside READ COMMITTED, where the chain lock cannot see the latest row', async () => {
+    const client = await fresh.pool.connect()
+    try {
+      await client.query('BEGIN ISOLATION LEVEL REPEATABLE READ')
+      await expect(
+        client.query(
+          `INSERT INTO audit_events (occurred_at, event_type, subject, trace_id) VALUES ($1, 'sign_in', 'rr', $2)`,
+          [T0, TRACE],
+        ),
+      ).rejects.toThrow('audit_events appends require READ COMMITTED isolation')
+    } finally {
+      await client.query('ROLLBACK')
+      client.release()
+    }
+    expect(verifyAuditChain(await readAuditChain(db)).ok).toBe(true)
+  })
+
   it('accepts only known event types, code-shaped reasons and W3C trace ids', async () => {
     const base = { occurredAt: T0, subject: 'a', reason: null, traceId: TRACE } as const
-    await expect(audit.append({ ...base, eventType: 'report_viewed' as never })).rejects.toThrow(
-      'audit_events_event_type_known',
-    )
-    await expect(audit.append({ ...base, eventType: 'access_denied', reason: 'Jane Doe was denied' })).rejects.toThrow(
-      'audit_events_reason_is_code',
-    )
-    await expect(audit.append({ ...base, eventType: 'access_denied', traceId: 'not-a-trace' })).rejects.toThrow(
-      'audit_events_trace_id_w3c',
-    )
-    await expect(audit.append({ ...base, eventType: 'access_denied', traceId: '0'.repeat(32) })).rejects.toThrow(
-      'audit_events_trace_id_w3c',
-    )
+    await expect(audit.append({ ...base, eventType: 'report_viewed' as never })).rejects.toMatchObject({
+      constraint: 'audit_events_event_type_known',
+    })
+    await expect(
+      audit.append({ ...base, eventType: 'access_denied', reason: 'Jane Doe was denied' }),
+    ).rejects.toMatchObject({
+      constraint: 'audit_events_reason_is_code',
+    })
+    await expect(audit.append({ ...base, eventType: 'access_denied', traceId: 'not-a-trace' })).rejects.toMatchObject({
+      constraint: 'audit_events_trace_id_w3c',
+    })
+    await expect(audit.append({ ...base, eventType: 'access_denied', traceId: '0'.repeat(32) })).rejects.toMatchObject({
+      constraint: 'audit_events_trace_id_w3c',
+    })
   })
 })

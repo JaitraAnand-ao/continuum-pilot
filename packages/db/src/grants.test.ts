@@ -56,6 +56,24 @@ describe.skipIf(!testDatabaseUrl)('per-role grants (least privilege, on real Pos
     })
   })
 
+  it('the report worker purge deletes the expired session and keeps the live one', async () => {
+    const expired = Buffer.alloc(32, 11)
+    const live = Buffer.alloc(32, 12)
+    await fresh.pool.query(insertSession, [expired, Buffer.alloc(40, 2)])
+    await fresh.pool.query(
+      `INSERT INTO sessions (id_hash, subject, account_name, roles, refresh_token_ciphertext, created_at, last_seen_at, idle_expires_at, absolute_expires_at)
+        VALUES ($1, 's', 'b@contoso.example', '{reader}', $2, '2026-10-19T16:00:00Z', '2026-10-19T16:00:00Z', '2026-10-19T16:15:00Z', '2026-10-20T00:00:00Z')`,
+      [live, Buffer.alloc(40, 2)],
+    )
+    const purged = await asRole(fresh.pool, DB_ROLES.reportWorker, async (c) => {
+      const { rows } = await c.query(`SELECT purge_expired_sessions('2026-10-19T16:05:00Z') AS purged`)
+      return rows[0].purged
+    })
+    expect(purged).toBe(1)
+    const { rows } = await fresh.pool.query<{ id_hash: Buffer }>('SELECT id_hash FROM sessions')
+    expect(rows.map((r) => r.id_hash.toString('hex'))).toEqual([live.toString('hex')])
+  })
+
   it('the mail worker can touch neither sessions nor audit events, nor purge', async () => {
     await asRole(fresh.pool, DB_ROLES.mailWorker, async (c) => {
       await expect(c.query('SELECT * FROM sessions')).rejects.toThrow(DENIED)

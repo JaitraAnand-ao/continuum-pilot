@@ -81,8 +81,8 @@ export function createSessionRepository(db: Database): SessionRepository {
     },
 
     async purgeExpired(now) {
-      const { rows } = await db.execute<{ purged: number }>(
-        sql`SELECT purge_expired_sessions(${now}::timestamptz) AS purged`,
+      const { rows } = await withoutQueryText(
+        db.execute<{ purged: number }>(sql`SELECT purge_expired_sessions(${now}::timestamptz) AS purged`),
       )
       return rows[0]?.purged ?? 0
     },

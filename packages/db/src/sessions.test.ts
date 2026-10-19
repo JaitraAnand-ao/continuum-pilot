@@ -169,8 +169,45 @@ describe.skipIf(!testDatabaseUrl)('sessions table (AD-5, on real Postgres)', () 
     ])
   })
 
+  describe('a rejected write never carries row text or bound parameters', () => {
+    const caught = async (work: Promise<unknown>): Promise<unknown> => {
+      try {
+        await work
+      } catch (error) {
+        return error
+      }
+      throw new Error('expected the write to be rejected')
+    }
+    const serialised = (error: unknown) =>
+      [JSON.stringify(error), String(error), String((error as { detail?: unknown }).detail)].join('\n')
+    const expectNoSessionData = (error: unknown, s: NewSession) => {
+      const text = serialised(error)
+      expect(text).not.toContain(s.accountName)
+      expect(text).not.toContain(s.idHash.toString('hex'))
+    }
+
+    it('a sessions_idle_at_most_15m CHECK rejection names the constraint but not the row', async () => {
+      const s = newSession({ idleExpiresAt: at(15 * MINUTE + 1) })
+      const error = await caught(sessions.create(s))
+      expect(error).toMatchObject({ code: '23514', constraint: 'sessions_idle_at_most_15m', table: 'sessions' })
+      expect((error as { detail?: unknown }).detail).toBeUndefined()
+      expectNoSessionData(error, s)
+    })
+
+    it('a duplicate-key rotation names the constraint but not the key', async () => {
+      const previous = newSession()
+      await sessions.create(previous)
+      const clash = newSession({ idHash: previous.idHash, accountName: 'clash.reader@contoso.example' })
+      const error = await caught(sessions.rotate(previous.idHash, clash))
+      expect(error).toMatchObject({ code: '23505', table: 'sessions' })
+      expectNoSessionData(error, previous)
+      expectNoSessionData(error, clash)
+    })
+  })
+
   describe('the table refuses rows that break AD-5', () => {
-    const rejects = (s: NewSession, constraint: string) => expect(sessions.create(s)).rejects.toThrow(constraint)
+    const rejects = (s: NewSession, constraint: string) =>
+      expect(sessions.create(s)).rejects.toMatchObject({ constraint })
 
     it('accepts a 32-byte SHA-256 id hash and rejects 31 or 33 bytes', async () => {
       await rejects(newSession({ idHash: Buffer.alloc(31, 201) }), 'sessions_id_hash_is_sha256')

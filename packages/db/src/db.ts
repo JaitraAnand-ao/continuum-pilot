@@ -25,12 +25,39 @@ export async function runMigrations(db: Database): Promise<void> {
   await migrate(db, { migrationsFolder })
 }
 
-/** Rethrows a failed query as the underlying Postgres error, so neither the SQL text nor the
- * bound parameters (session hashes, ciphertext) travel up into logs or responses. */
+/** A failed query reduced to what is safe to log: the Postgres SQLSTATE, constraint and table.
+ * The pg error's message, detail and where (which quote row values) and the bound parameters
+ * (session hashes, ciphertext, account names) are dropped. */
+export class DatabaseQueryError extends Error {
+  override readonly name = 'DatabaseQueryError'
+  readonly code: string | undefined
+  readonly constraint: string | undefined
+  readonly table: string | undefined
+
+  constructor(code: string | undefined, constraint: string | undefined, table: string | undefined) {
+    super('database query failed')
+    this.code = code
+    this.constraint = constraint
+    this.table = table
+  }
+}
+
+const stringField = (source: unknown, key: 'code' | 'constraint' | 'table'): string | undefined => {
+  const value = typeof source === 'object' && source !== null ? (source as Record<string, unknown>)[key] : undefined
+  return typeof value === 'string' ? value : undefined
+}
+
+/** Rethrows a failed query as a DatabaseQueryError, so neither the SQL text, the row text nor the
+ * bound parameters travel up into logs or responses. */
 export async function withoutQueryText<T>(query: PromiseLike<T>): Promise<T> {
   try {
     return await query
   } catch (error) {
-    throw error instanceof DrizzleQueryError && error.cause instanceof Error ? error.cause : error
+    const pgError = error instanceof DrizzleQueryError ? error.cause : error
+    throw new DatabaseQueryError(
+      stringField(pgError, 'code'),
+      stringField(pgError, 'constraint'),
+      stringField(pgError, 'table'),
+    )
   }
 }
