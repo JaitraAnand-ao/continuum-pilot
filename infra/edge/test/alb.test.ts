@@ -6,6 +6,7 @@ import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { attr, blocks, readModule, resource, resources, stringList, unquote, type Block } from './hcl'
+import { find, parse, servers } from './nginx'
 import { routingCases, type Destination } from './routes'
 
 const dir = join(import.meta.dirname, '..', 'terraform')
@@ -19,6 +20,36 @@ const allSource = existsSync(dir)
 
 function nested(block: Block, kind: string): Block[] {
   return blocks(block.body).filter((b) => b.kind === kind)
+}
+
+/** Every character ALB accepts in a path-pattern value. */
+const albPathCharacters = /^[A-Za-z0-9_\-.$/~"'@:+&*?]+$/
+
+function pathPatterns(rule: Block): string[] {
+  return nested(rule, 'condition').flatMap((c) =>
+    nested(c, 'path_pattern').flatMap((p) => stringList(attr(p.body, 'values'))),
+  )
+}
+
+/** The URI-path regexes of the blocking rules in web ACLs associated with the edge ALB. */
+function wafBlockRegexes(): RegExp[] {
+  const associated = new Set(
+    resources(module, 'aws_wafv2_web_acl_association')
+      .filter((a) => attr(a.body, 'resource_arn') === 'aws_lb.edge.arn')
+      .map((a) => attr(a.body, 'web_acl_arn')),
+  )
+  return resources(module, 'aws_wafv2_web_acl')
+    .filter((acl) => associated.has(`aws_wafv2_web_acl.${acl.labels[1]}.arn`))
+    .flatMap((acl) => nested(acl, 'rule'))
+    .filter((rule) => nested(nested(rule, 'action')[0] ?? rule, 'block').length > 0)
+    .flatMap((rule) => [...rule.body.matchAll(/regex_string\s*=\s*"([^"]*)"/g)].map((m) => new RegExp(m[1] ?? '')))
+}
+
+function nginxHsts(): string | undefined {
+  const config = parse(readFileSync(join(import.meta.dirname, '..', 'nginx', 'default.conf'), 'utf8'))
+  return servers(config)
+    .flatMap((s) => find(s.children ?? [], 'add_header'))
+    .find((h) => h.args[0] === 'Strict-Transport-Security')?.args[1]
 }
 
 function globToRegExp(pattern: string): RegExp {
@@ -45,13 +76,12 @@ function destinationOf(action: Block): Destination {
 }
 
 function albRoute(path: string): Destination {
+  if (wafBlockRegexes().some((r) => r.test(path))) return 'denied'
   const rules = resources(module, 'aws_lb_listener_rule')
     .map((rule) => ({ rule, priority: Number(attr(rule.body, 'priority')) }))
     .sort((a, b) => a.priority - b.priority)
   for (const { rule } of rules) {
-    const patterns = nested(rule, 'condition').flatMap((c) =>
-      nested(c, 'path_pattern').flatMap((p) => stringList(attr(p.body, 'values'))),
-    )
+    const patterns = pathPatterns(rule)
     if (patterns.some((p) => globToRegExp(p).test(path))) {
       const action = nested(rule, 'action')[0]
       if (!action) throw new Error('listener rule without an action')
@@ -73,6 +103,16 @@ describe('ALB listener (AD-19)', () => {
     expect(unquote(attr(https.body, 'protocol'))).toBe('HTTPS')
     expect(unquote(attr(https.body, 'ssl_policy'))).toMatch(/^ELBSecurityPolicy-TLS13-1-2-(Res-)?FIPS-\d{4}-\d{2}$/)
     expect(attr(https.body, 'certificate_arn')).toBe('var.certificate_arn')
+  })
+
+  it('sends the same HSTS header as the local edge nginx', () => {
+    const https = resource(module, 'aws_lb_listener', 'https')
+    const hsts = unquote(attr(https.body, 'routing_http_response_strict_transport_security_header_value'))
+    expect(hsts).toMatch(/max-age=\d{8,}/)
+    expect(hsts).toBe(nginxHsts())
+    // The listener header arguments arrived in 5.84.0 and apply to existing listeners from 5.89.0.
+    const floor = /hashicorp\/aws"[\s\S]*?version\s*=\s*">=\s*(\d+)\.(\d+)/.exec(allSource)
+    expect(Number(floor?.[1]) * 1000 + Number(floor?.[2])).toBeGreaterThanOrEqual(5089)
   })
 
   it('never listens on port 80 or plain HTTP', () => {
@@ -138,6 +178,45 @@ describe('target groups re-encrypt to the services', () => {
 
   it('declares only the api and keycloak target groups', () => {
     expect(resources(module, 'aws_lb_target_group').map((g) => g.labels[1])).toEqual(['api', 'keycloak'])
+  })
+})
+
+describe('percent-encoded Keycloak paths are refused by WAF (ALB path patterns cannot hold %)', () => {
+  it('uses only ALB-permitted characters in every path-pattern value', () => {
+    const values = resources(module, 'aws_lb_listener_rule').flatMap(pathPatterns)
+    expect(values.length).toBeGreaterThan(0)
+    for (const value of values) expect(value).toMatch(albPathCharacters)
+  })
+
+  it('associates a regional web ACL with the edge ALB that allows by default', () => {
+    const association = resources(module, 'aws_wafv2_web_acl_association')
+    expect(association.map((a) => attr(a.body, 'resource_arn'))).toEqual(['aws_lb.edge.arn'])
+    const acl = resource(module, 'aws_wafv2_web_acl', 'edge')
+    expect(attr(association[0]?.body ?? '', 'web_acl_arn')).toBe('aws_wafv2_web_acl.edge.arn')
+    expect(unquote(attr(acl.body, 'scope'))).toBe('REGIONAL')
+    expect(nested(nested(acl, 'default_action')[0] ?? acl, 'allow')).toHaveLength(1)
+  })
+
+  it('blocks on the raw URI path, with no decoding transformation', () => {
+    const rules = nested(resource(module, 'aws_wafv2_web_acl', 'edge'), 'rule')
+    expect(rules.length).toBeGreaterThan(0)
+    for (const rule of rules) {
+      expect(rule.body).toMatch(/uri_path\s*\{\s*\}/)
+      const types = [...rule.body.matchAll(/text_transformation\s*\{[^}]*type\s*=\s*"([^"]*)"/g)].map((m) => m[1])
+      expect(types).toEqual(['NONE'])
+    }
+  })
+
+  it.each([
+    ['/realms/signin-reports/%2e%2e/master/', true],
+    ['/resources/x1y2z/%61dmin/keycloak.v2/main.js', true],
+    ['/realms/signin-reports/protocol/openid-connect/auth', false],
+    ['/resources/x1y2z/login/keycloak.v2/css/styles.css', false],
+    ['/api/reports/100%25', false],
+  ])('%s blocked by WAF: %s', (path, blocked) => {
+    const regexes = wafBlockRegexes()
+    expect(regexes.length).toBeGreaterThan(0)
+    expect(regexes.some((r) => r.test(path))).toBe(blocked)
   })
 })
 

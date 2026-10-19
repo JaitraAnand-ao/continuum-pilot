@@ -34,6 +34,11 @@ run "listener_is_fips_https_on_443_only" {
   }
 
   assert {
+    condition     = aws_lb_listener.https.routing_http_response_strict_transport_security_header_value == "max-age=31536000; includeSubDomains"
+    error_message = "The listener must send the same HSTS header as nginx/default.conf."
+  }
+
+  assert {
     condition     = aws_lb.edge.internal == false && aws_lb.edge.drop_invalid_header_fields
     error_message = "The ALB must be internet-facing and drop invalid header fields."
   }
@@ -79,6 +84,44 @@ run "admin_paths_are_not_routed" {
   assert {
     condition     = toset(tolist(aws_lb_listener_rule.keycloak.condition)[0].path_pattern[0].values) == toset(["/realms/signin-reports/*", "/resources/*"])
     error_message = "Only the signin-reports realm and Keycloak resources are forwarded to Keycloak."
+  }
+}
+
+run "path_patterns_use_alb_characters_only" {
+  command = plan
+
+  assert {
+    condition = alltrue([
+      for v in flatten([
+        for r in [aws_lb_listener_rule.deny_encoded, aws_lb_listener_rule.deny_admin, aws_lb_listener_rule.keycloak] :
+        [for c in r.condition : [for p in c.path_pattern : p.values]]
+      ]) : can(regex("^[A-Za-z0-9_\\-.$/~\"'@:+&*?]+$", v))
+    ])
+    error_message = "Every path_pattern value must use only the characters ALB permits (no %)."
+  }
+}
+
+# ALB path patterns cannot contain %, so the percent-encoding refusal under the Keycloak
+# prefixes lives in WAF, which matches the URI path before anything decodes it.
+run "waf_refuses_percent_encoding_under_keycloak_paths" {
+  command = plan
+
+  assert {
+    condition     = aws_wafv2_web_acl.edge.scope == "REGIONAL" && length(aws_wafv2_web_acl.edge.default_action[0].allow) == 1
+    error_message = "The edge web ACL is regional and allows what no rule blocks."
+  }
+
+  assert {
+    condition = anytrue([
+      for r in aws_wafv2_web_acl.edge.rule : alltrue([
+        length(r.action[0].block) == 1,
+        length(r.statement[0].regex_match_statement[0].field_to_match[0].uri_path) == 1,
+        alltrue([for t in r.statement[0].regex_match_statement[0].text_transformation : t.type == "NONE"]),
+        alltrue([for p in ["/realms/signin-reports/%2e%2e/master/", "/resources/x1y2z/%61dmin/keycloak.v2/main.js"] : can(regex(r.statement[0].regex_match_statement[0].regex_string, p))]),
+        !anytrue([for p in ["/realms/signin-reports/protocol/openid-connect/auth", "/resources/x1y2z/login/keycloak.v2/css/styles.css", "/api/reports/100%25"] : can(regex(r.statement[0].regex_match_statement[0].regex_string, p))]),
+      ])
+    ])
+    error_message = "A blocking rule must match % on the undecoded URI path under /realms/signin-reports/ and /resources/ only."
   }
 }
 

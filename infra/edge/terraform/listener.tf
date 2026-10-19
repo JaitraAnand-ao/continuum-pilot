@@ -7,6 +7,9 @@ resource "aws_lb_listener" "https" {
   certificate_arn   = var.certificate_arn
   tags              = var.tags
 
+  # Same HSTS header the local edge nginx sends (nginx/default.conf).
+  routing_http_response_strict_transport_security_header_value = "max-age=31536000; includeSubDomains"
+
   # Everything that is not the realm or its resources belongs to the api (SPA and BFF).
   default_action {
     type             = "forward"
@@ -23,8 +26,9 @@ resource "aws_lb_listener" "https" {
 
 # Refusals come first (priorities 1–9) so no later forward can reach what they cover.
 
-# Traversal and encoded paths: ALB matches the raw path, Keycloak decodes and resolves it,
-# so /realms/signin-reports/../master or %61dmin would otherwise slip past the rules below.
+# Traversal: ALB matches the raw path, Keycloak decodes and resolves it, so
+# /realms/signin-reports/../master would otherwise slip past the rules below. Percent-encoded
+# paths (%2e%2e, %61dmin) cannot be matched by a path pattern; waf.tf refuses those.
 resource "aws_lb_listener_rule" "deny_encoded" {
   listener_arn = aws_lb_listener.https.arn
   priority     = 1
@@ -42,7 +46,7 @@ resource "aws_lb_listener_rule" "deny_encoded" {
 
   condition {
     path_pattern {
-      values = ["*..*", "/realms/signin-reports/*%*", "/resources/*%*"]
+      values = ["*..*"]
     }
   }
 }
