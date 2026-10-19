@@ -115,3 +115,58 @@ describe.skipIf(!databaseUrl)('report.deadline-check through pg-boss on PostgreS
     expect(emitted.reportDate).toBe('2026-10-11')
   }, 30_000)
 })
+
+describe.skipIf(!databaseUrl)('a failed report.generate job through pg-boss on PostgreSQL', () => {
+  let database: Awaited<ReturnType<typeof reportSchema>>
+  let boss: PgBoss
+  const schema = `pgboss_${randomUUID().replaceAll('-', '')}`
+
+  beforeAll(async () => {
+    database = await reportSchema()
+    boss = new PgBoss({ connectionString: databaseUrl as string, schema, supervise: false, schedule: false })
+    boss.on('error', () => undefined)
+    await boss.start()
+  })
+  afterAll(async () => {
+    await boss?.stop({ graceful: false, wait: true })
+    await database?.pool.query(`DROP SCHEMA IF EXISTS ${schema} CASCADE`)
+    await database?.drop()
+  })
+
+  it('stores only the fixed message as the job output, never the UPN or sign-in id the error quoted', async () => {
+    const upn = 'leaky.user@contoso.example'
+    const signInId = 'sign-in-7f3c2a91-leak'
+    const clock = new FakeClock('2026-10-12T02:00:00.000Z')
+    const graph = new ScriptedGraph(clock, {
+      signIns: [signIn({ id: signInId, createdAt: '2026-10-11T08:00:00.000Z' })],
+    })
+    const store = createPgReportStore(database.db)
+    await registerReportWorker(boss, {
+      clock,
+      sleeper: new FakeSleeper(clock),
+      signIns: graph,
+      risk: graph,
+      metrics: new RecordingMetrics(),
+      store: {
+        findPublished: (reportDate) => store.findPublished(reportDate),
+        recordNotGenerated: (...args) => store.recordNotGenerated(...args),
+        publish: async () => {
+          throw new Error(`duplicate key for ${upn} on sign-in ${signInId}`)
+        },
+      },
+    })
+
+    const id = (await boss.send(GENERATE_QUEUE, { reportDate: '2026-10-11' }, { retryLimit: 0 })) as string
+    let job = await boss.getJobById(GENERATE_QUEUE, id)
+    for (let attempt = 0; attempt < 100 && job?.state !== 'failed'; attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 200))
+      job = await boss.getJobById(GENERATE_QUEUE, id)
+    }
+
+    expect(job?.state).toBe('failed')
+    const output = JSON.stringify(job?.output)
+    expect(output).toContain('report generation failed for 2026-10-11')
+    expect(output).not.toContain(upn)
+    expect(output).not.toContain(signInId)
+  }, 30_000)
+})
