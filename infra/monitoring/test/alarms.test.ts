@@ -4,6 +4,19 @@ import { loadMetricContract, loadModule, resource } from './terraform'
 const module = loadModule()
 const contract = loadMetricContract()
 
+const DAY = 24 * 60 * 60
+const CHECK_AT = (7 * 60 + 30) * 60
+
+/* A missing-data alarm goes into alarm once its whole window holds no datapoint. When yesterday's 07:30 UTC
+   check emitted and today's never does, that is the end of the first period starting one window after the
+   period holding yesterday's datapoint: the worst case, in seconds after today's 00:00 UTC. */
+function worstCaseDetection(alarm: Record<string, unknown>): number {
+  const period = alarm['period'] as number
+  const window = period * (alarm['evaluation_periods'] as number)
+  const yesterdaysPeriodStart = Math.floor(CHECK_AT / period) * period - DAY
+  return yesterdaysPeriodStart + period + window
+}
+
 describe('Feature: Have yesterday’s sign-ins collected from Microsoft Graph and a report published by 08:00 UTC', () => {
   describe('@AC-6 Scenario: A missed report raises an alarm', () => {
     const alarm = resource(module, 'aws_cloudwatch_metric_alarm', 'no_report_by_0730_utc')
@@ -69,6 +82,14 @@ describe('Feature: Have yesterday’s sign-ins collected from Microsoft Graph an
       expect(alarm['datapoints_to_alarm']).toBe(alarm['evaluation_periods'])
       expect(alarm['treat_missing_data']).toBe('breaching')
       expect(alarm['alarm_actions']).toEqual(['${aws_sns_topic.alarms.arn}'])
+    })
+
+    it('fires by 07:35 UTC on the day the 07:30 UTC check does not run, before the 08:00 UTC deadline', () => {
+      const detectedAt = worstCaseDetection(alarm)
+      expect(detectedAt).toBeGreaterThan(CHECK_AT)
+      expect(detectedAt).toBeLessThanOrEqual(CHECK_AT + 5 * 60)
+      expect(detectedAt).toBeLessThan(8 * 60 * 60)
+      expect(alarm['alarm_description']).toMatch(/07:35 UTC/)
     })
   })
 })

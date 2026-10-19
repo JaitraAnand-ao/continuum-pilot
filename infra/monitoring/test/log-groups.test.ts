@@ -41,6 +41,13 @@ describe('CMP-11 log groups for the daily report run (ST-2)', () => {
     expect(alarms?.['principals']).toEqual([{ type: 'Service', identifiers: ['cloudwatch.amazonaws.com'] }])
     expect(alarms?.['actions']).toEqual(['kms:Decrypt', 'kms:GenerateDataKey*'])
   })
+
+  it('lets CloudWatch alarms use the key only on behalf of this account', () => {
+    const alarms = policyDocument(module, 'monitoring_key').find((s) => s['sid'] === 'CloudWatchAlarmsPublish')
+    expect(alarms?.['condition']).toEqual([
+      { test: 'StringEquals', variable: 'aws:SourceAccount', values: ['${var.account_id}'] },
+    ])
+  })
 })
 
 describe('CMP-11 audit mirror (AD-23)', () => {
@@ -86,5 +93,17 @@ describe('CMP-11 audit mirror (AD-23)', () => {
     expect(attachment['for_each']).toBe('${toset(var.protected_role_names)}')
     expect(attachment['role']).toBe('${each.value}')
     expect(attachment['policy_arn']).toBe('${aws_iam_policy.audit_mirror_deny_delete.arn}')
+  })
+
+  it('requires at least one protected role, so the deny can never silently attach to nobody', () => {
+    const roles = module.variable['protected_role_names']
+    expect(roles?.['type']).toBe('list(string)')
+    expect(roles).not.toHaveProperty('default')
+    expect(roles?.['validation']).toEqual([
+      {
+        condition: '${length(var.protected_role_names) > 0}',
+        error_message: expect.stringMatching(/protected_role_names/),
+      },
+    ])
   })
 })

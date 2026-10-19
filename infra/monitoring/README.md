@@ -8,10 +8,13 @@ assertions in `test/` read it without an HCL parser.
 - `audit-mirror.tf.json` — IAM deny on deleting the mirror, shortening its retention or destroying its key,
   attached to every role in `protected_role_names`.
 - `alarms.tf.json` — ST-2 AC-6: `no-report-by-0730-utc`, and `report-deadline-check-missing` for when the
-  check itself stops running.
+  check itself stops running: no datapoint in the last 288 five-minute periods, so a missed 07:30 UTC check
+  alarms by 07:35 UTC that day, before the 08:00 UTC deadline.
 - `report-worker-metrics.json` — the metric contract the report-worker emits and the alarms watch:
   `SigninReports/ReportWorker` `CompleteReportAvailable`, 1 or 0, from the `report.deadline-check` job at 07:30 UTC.
 
 Every ARN is built from `var.partition` (`aws` or `aws-us-gov`) and the provider uses FIPS endpoints.
 
-Run the assertions with `npx vitest run --config infra/monitoring/vitest.config.ts`.
+Run the assertions with `npx vitest run --config infra/monitoring/vitest.config.ts`. `tests/monitoring.tftest.hcl` is a
+Terraform-native plan test against a mocked AWS provider with GovCloud values; the vitest run also runs
+`terraform validate` and `terraform test` on a scratch copy when `terraform` is on the PATH.

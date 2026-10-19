@@ -29,7 +29,14 @@
             "effect": "Allow",
             "principals": [{ "type": "Service", "identifiers": ["cloudwatch.amazonaws.com"] }],
             "actions": ["kms:Decrypt", "kms:GenerateDataKey*"],
-            "resources": ["*"]
+            "resources": ["*"],
+            "condition": [
+              {
+                "test": "StringEquals",
+                "variable": "aws:SourceAccount",
+                "values": ["${var.account_id}"]
+              }
+            ]
           }
         ]
       }

@@ -42,8 +42,13 @@
     },
     "protected_role_names": {
       "type": "list(string)",
-      "default": [],
-      "description": "IAM roles (operators, CI deployer, task roles) that must never delete the audit mirror or its key."
+      "description": "IAM roles (operators, CI deployer, task roles) that must never delete the audit mirror or its key.",
+      "validation": [
+        {
+          "condition": "${length(var.protected_role_names) > 0}",
+          "error_message": "protected_role_names must name at least one role, or the audit mirror deny protects nothing."
+        }
+      ]
     }
   },
   "output": {
