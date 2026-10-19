@@ -22,6 +22,13 @@
       "when": 1792429731576,
       "tag": "0002_st1_audit_chain_read_committed",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1792431270740,
+      "tag": "0003_st1_sessions_final_and_api_grants",
+      "breakpoints": true
     }
   ]
 }

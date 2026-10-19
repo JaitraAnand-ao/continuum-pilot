@@ -12,7 +12,8 @@ export type AppRole = (typeof APP_ROLES)[number]
 
 /* One row per browser session. The cookie value never reaches the database: only its
  * SHA-256 hash (id_hash) does, and the refresh token is stored as AES-256-GCM output
- * (12-byte IV, ciphertext, 16-byte tag). There is no column for an access token. */
+ * (12-byte IV, ciphertext, 16-byte tag). There is no column for an access token.
+ * The sessions_guard trigger keeps an ended row final and its identity and absolute limit fixed. */
 export const sessions = pgTable(
   'sessions',
   {

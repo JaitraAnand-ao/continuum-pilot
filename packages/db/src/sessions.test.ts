@@ -246,6 +246,58 @@ describe.skipIf(!testDatabaseUrl)('sessions table (AD-5, on real Postgres)', () 
     })
   })
 
+  describe('an ended or expiring session cannot be revived or stretched, even by the table owner (AC-9)', () => {
+    const update = (assignment: string, idHash: Buffer) =>
+      fresh.pool.query(`UPDATE sessions SET ${assignment} WHERE id_hash = $1`, [idHash])
+    const iso = (ms: number) => at(ms).toISOString()
+
+    it('refuses to clear or move the end of a signed-out session, so the old cookie stays dead', async () => {
+      const s = newSession()
+      await sessions.create(s)
+      await sessions.end(s.idHash, at(MINUTE))
+      for (const assignment of [
+        'ended_at = NULL',
+        `ended_at = '${iso(2 * MINUTE)}'`,
+        `last_seen_at = '${iso(2 * MINUTE)}', idle_expires_at = '${iso(17 * MINUTE)}'`,
+      ]) {
+        await expect(update(assignment, s.idHash)).rejects.toMatchObject({ constraint: 'sessions_ended_is_final' })
+      }
+      expect(await sessions.findLive(s.idHash, at(2 * MINUTE))).toBeUndefined()
+    })
+
+    it('refuses to move the creation time or the 8 h absolute limit of a live session', async () => {
+      const s = newSession()
+      await sessions.create(s)
+      for (const assignment of [`created_at = '${iso(MINUTE)}'`, `absolute_expires_at = '${iso(8 * HOUR - 1)}'`]) {
+        await expect(update(assignment, s.idHash)).rejects.toMatchObject({ constraint: 'sessions_identity_is_fixed' })
+      }
+    })
+
+    it('refuses to change whose session it is or what roles it carries', async () => {
+      const s = newSession()
+      await sessions.create(s)
+      for (const assignment of [
+        `subject = 'someone-else'`,
+        `account_name = 'other@contoso.example'`,
+        `roles = '{reader,report_admin}'`,
+        `idp_session_id = 'kc-other'`,
+        `id_hash = '\\x${'fe'.repeat(32)}'`,
+      ]) {
+        await expect(update(assignment, s.idHash)).rejects.toMatchObject({ constraint: 'sessions_identity_is_fixed' })
+      }
+    })
+
+    it('refuses to move last activity backwards, accepts the same instant', async () => {
+      const s = newSession()
+      await sessions.create(s)
+      await sessions.touch(s.idHash, at(5 * MINUTE), at(20 * MINUTE))
+      await expect(update(`last_seen_at = '${iso(5 * MINUTE - 1)}'`, s.idHash)).rejects.toMatchObject({
+        constraint: 'sessions_last_seen_monotonic',
+      })
+      expect(await sessions.touch(s.idHash, at(5 * MINUTE), at(20 * MINUTE))).toBeDefined()
+    })
+  })
+
   it('has no column that could hold a session id in clear or an access token (AC-8)', async () => {
     const { rows } = await fresh.pool.query<{ column_name: string }>(
       `SELECT column_name FROM information_schema.columns WHERE table_name = 'sessions' ORDER BY column_name`,

@@ -31,9 +31,32 @@ describe.skipIf(!testDatabaseUrl)('per-role grants (least privilege, on real Pos
         Buffer.alloc(32, 1),
       ])
       expect((await c.query('SELECT subject FROM sessions')).rowCount).toBe(1)
+      await c.query(`UPDATE sessions SET ended_at = '2026-10-19T08:02:00Z' WHERE id_hash = $1`, [Buffer.alloc(32, 1)])
       await c.query(insertAudit)
-      await c.query(`DELETE FROM sessions WHERE id_hash = $1`, [Buffer.alloc(32, 1)])
     })
+    await fresh.pool.query(`DELETE FROM sessions WHERE id_hash = $1`, [Buffer.alloc(32, 1)])
+  })
+
+  it('the API cannot delete a session nor rewrite whose it is or when it must end: only the purge removes rows', async () => {
+    const id = Buffer.alloc(32, 21)
+    await asRole(fresh.pool, DB_ROLES.api, async (c) => {
+      await c.query(insertSession, [id, Buffer.alloc(40, 2)])
+      await expect(c.query(`DELETE FROM sessions WHERE id_hash = $1`, [id])).rejects.toThrow(DENIED)
+      await expect(c.query('TRUNCATE sessions')).rejects.toThrow(DENIED)
+      for (const assignment of [
+        `subject = 'someone-else'`,
+        `account_name = 'b@contoso.example'`,
+        `roles = '{reader,report_admin}'`,
+        `idp_session_id = 'kc-other'`,
+        `created_at = '2026-10-19T09:00:00Z'`,
+        `absolute_expires_at = '2026-10-19T15:00:00Z'`,
+        `id_hash = '\\x${'16'.repeat(32)}'`,
+      ]) {
+        await expect(c.query(`UPDATE sessions SET ${assignment} WHERE id_hash = $1`, [id])).rejects.toThrow(DENIED)
+      }
+      await c.query(`UPDATE sessions SET refresh_token_ciphertext = $2 WHERE id_hash = $1`, [id, Buffer.alloc(41, 3)])
+    })
+    await fresh.pool.query(`DELETE FROM sessions WHERE id_hash = $1`, [id])
   })
 
   it('the API cannot read, rewrite or delete audit events, nor create tables', async () => {
