@@ -1,2 +1,10 @@
 /* CMP-5: Drizzle schema, committed forward-only migrations at packages/db/migrations (AD-10), per-role grants. */
-export {}
+export * from './audit-log.js'
+export type { Clock } from './clock.js'
+export * from './database.js'
+export * from './login-transaction-store.js'
+export * from './migrate.js'
+export * from './roles.js'
+export * from './schema.js'
+export * from './session-store.js'
+export * from './token-seal.js'
