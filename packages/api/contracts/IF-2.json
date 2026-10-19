@@ -1,0 +1,69 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Entra Sign-In Reports BFF - sign-in callback",
+    "version": "1.0.0",
+    "description": "IF-2, provided by ST-1 (CMP-2). Keycloak returns the browser here. The __Host-sr_login transaction is opened first and the returned state must match it, for a success and for an error alike; only then is the code exchanged with the PKCE verifier and the ID token's nonce verified, or the failure audited (AD-5)."
+  },
+  "paths": {
+    "/auth/callback": {
+      "get": {
+        "operationId": "completeLogin",
+        "summary": "Finish the OIDC authorization code flow",
+        "security": [],
+        "parameters": [
+          { "name": "code", "in": "query", "required": false, "schema": { "type": "string", "maxLength": 4096 } },
+          { "name": "state", "in": "query", "required": false, "schema": { "type": "string", "maxLength": 512 } },
+          {
+            "name": "error",
+            "in": "query",
+            "required": false,
+            "description": "OAuth error returned when sign-in did not complete at Microsoft (ST-1 AC-6).",
+            "schema": { "type": "string", "maxLength": 256 }
+          },
+          {
+            "name": "error_description",
+            "in": "query",
+            "required": false,
+            "description": "Only an AADSTS code is taken from it; the free text is never echoed.",
+            "schema": { "type": "string", "maxLength": 2048 }
+          }
+        ],
+        "responses": {
+          "302": {
+            "description": "After a verified code: to the returnTo the sign-in started with, setting the session cookie. After a verified error: to /signin/error with the Entra code, an error reference and a UTC timestamp, and a sign-in-failed audit event is written. The login cookie is deleted either way.",
+            "headers": {
+              "Location": {
+                "schema": { "type": "string", "pattern": "^/([^/\\\\].*)?$" },
+                "description": "A same-origin path: the returnTo, or /signin/error?code=<code>&ref=<reference>&at=<UTC instant>."
+              },
+              "Set-Cookie": {
+                "schema": { "type": "string" },
+                "description": "__Host-sr_login deleted (Max-Age=0); on success also __Host-sr_session: httpOnly, Secure, SameSite=Strict."
+              }
+            }
+          },
+          "400": {
+            "description": "The login transaction is missing, tampered, expired or answers another state, or the code, PKCE verifier or ID token is refused (type /problems/invalid-login-transaction). No session is created and no audit event is written.",
+            "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/Problem" } } }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Problem": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["type", "title", "status", "traceId"],
+        "properties": {
+          "type": { "type": "string", "format": "uri-reference" },
+          "title": { "type": "string" },
+          "status": { "type": "integer" },
+          "traceId": { "type": "string", "pattern": "^[0-9a-f]{32}$" }
+        }
+      }
+    }
+  }
+}

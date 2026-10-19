@@ -1,0 +1,71 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Entra Sign-In Reports BFF - start sign-in",
+    "version": "1.0.0",
+    "description": "IF-1, provided by ST-1 (CMP-2). Starts the OIDC authorization code flow with PKCE, state and nonce against Keycloak (realm signin-reports, kc_idp_hint to Microsoft). ST-17 uses maxAge=0 to force re-authentication before an approval (AD-5: approve requires auth_time within 900 s)."
+  },
+  "paths": {
+    "/auth/login": {
+      "get": {
+        "operationId": "startLogin",
+        "summary": "Redirect the browser to Keycloak to sign in",
+        "security": [],
+        "parameters": [
+          {
+            "name": "returnTo",
+            "in": "query",
+            "required": false,
+            "description": "Same-origin path to return to after sign-in, for example /approvals?resume=<proposalId>. Absolute or cross-origin values are refused.",
+            "schema": { "type": "string", "pattern": "^/[^/\\\\].*$|^/$", "maxLength": 512 }
+          },
+          {
+            "name": "maxAge",
+            "in": "query",
+            "required": false,
+            "description": "OIDC max_age in seconds. 0 forces a fresh Microsoft sign-in (used before approving).",
+            "schema": { "type": "integer", "minimum": 0, "maximum": 900 }
+          }
+        ],
+        "responses": {
+          "302": {
+            "description": "Redirect to the Keycloak authorization endpoint. Sets the 5-minute SameSite=Lax login-transaction cookie.",
+            "headers": {
+              "Location": {
+                "schema": { "type": "string", "format": "uri" },
+                "description": "Keycloak /realms/signin-reports/protocol/openid-connect/auth URL with code_challenge, state, nonce and optional max_age."
+              },
+              "Set-Cookie": {
+                "schema": { "type": "string" },
+                "description": "__Host-sr_login transaction cookie: httpOnly, Secure, SameSite=Lax, Max-Age=300."
+              }
+            }
+          },
+          "400": {
+            "description": "returnTo or maxAge is invalid.",
+            "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/Problem" } } }
+          },
+          "503": {
+            "description": "Keycloak discovery is unavailable.",
+            "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/Problem" } } }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Problem": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["type", "title", "status", "traceId"],
+        "properties": {
+          "type": { "type": "string", "format": "uri-reference", "examples": ["/problems/invalid-request"] },
+          "title": { "type": "string" },
+          "status": { "type": "integer" },
+          "traceId": { "type": "string", "pattern": "^[0-9a-f]{32}$" }
+        }
+      }
+    }
+  }
+}
