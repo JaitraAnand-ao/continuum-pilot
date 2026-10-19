@@ -3,6 +3,7 @@ import { createApiClient, loginHref } from './client'
 import pinnedIf1 from './if-1.contract.json'
 import pinnedIf4 from './if-4.contract.json'
 import { contractErrors, contractFor, OPENAPI_PATH } from '../test-support/schema'
+import { returnPath, ROUTE_PATHS, type ReportRoute } from '../app/routes'
 import {
   adminOnlyMe,
   fakeFetch,
@@ -108,6 +109,31 @@ describe('loginHref builds the IF-1 start-sign-in address', () => {
     expect(loginHref({ returnTo: '/reports/daily', maxAge: 0 })).toBe(
       '/auth/login?returnTo=%2Freports%2Fdaily&maxAge=0',
     )
+  })
+
+  describe.each(Object.keys(ROUTE_PATHS) as ReportRoute[])('the %s report return path', (route) => {
+    const parameters = (if1 as typeof pinnedIf1).paths['/auth/login'].get.parameters as {
+      name: string
+      schema: { type: string; pattern: string; maxLength: number }
+    }[]
+    const returnTo = parameters.find(({ name }) => name === 'returnTo')?.schema
+
+    it.each([
+      ['a plain sign-in', {}],
+      ['a fresh sign-in with maxAge=0', { maxAge: 0 }],
+    ])('is sent as a returnTo the IF-1 schema accepts, for %s', (_name, { maxAge }: { maxAge?: number }) => {
+      const href = new URL(
+        loginHref(maxAge === undefined ? { returnTo: returnPath(route) } : { returnTo: returnPath(route), maxAge }),
+        'https://dashboard.example',
+      )
+      const sent = href.searchParams.get('returnTo') ?? ''
+      expect(href.pathname).toBe('/auth/login')
+      expect(sent).toBe(returnPath(route))
+      expect(href.searchParams.get('maxAge')).toBe(maxAge === undefined ? null : String(maxAge))
+      expect(returnTo?.type).toBe('string')
+      expect(new RegExp(returnTo?.pattern ?? '(?!)', 'u').test(sent)).toBe(true)
+      expect(sent.length).toBeLessThanOrEqual(returnTo?.maxLength ?? 0)
+    })
   })
 
   it('drops a returnTo the contract would refuse rather than send it', () => {
