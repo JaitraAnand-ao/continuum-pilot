@@ -1,0 +1,226 @@
+import { describe, expect, it } from 'vitest'
+import { createApiClient, loginHref } from './client'
+import pinnedIf1 from './if-1.contract.json'
+import pinnedIf4 from './if-4.contract.json'
+import { contractErrors, contractFor, OPENAPI_PATH } from '../test-support/schema'
+import { returnPath, ROUTE_PATHS, type ReportRoute } from '../app/routes'
+import {
+  adminOnlyMe,
+  fakeFetch,
+  json,
+  noAccessProblem,
+  noSessionProblem,
+  problem,
+  readerAdminMe,
+  readerMe,
+} from '../test-support/fixtures'
+
+/* Fixtures are validated against packages/api/openapi.json, the document api-client is
+ * generated from, wherever it documents the operation; the pinned step-7 copies stand in
+ * only until CMP-2 publishes the route. */
+const if1 = contractFor('/auth/login', pinnedIf1)
+const if4 = contractFor('/api/v1/me', pinnedIf4)
+
+describe('contractFor prefers packages/api/openapi.json', () => {
+  it('reads the committed openapi.json', () => {
+    expect(OPENAPI_PATH).toMatch(/packages\/api\/openapi\.json$/)
+  })
+
+  it('uses openapi.json for an operation it documents, and the pinned copy only for one it does not', () => {
+    const published = { openapi: '3.1.0', paths: { '/api/v1/me': { get: { responses: {} } } } }
+    expect(contractFor('/api/v1/me', pinnedIf4, published)).toBe(published)
+    expect(contractFor('/auth/login', pinnedIf1, published)).toBe(pinnedIf1)
+  })
+})
+
+describe('the fixtures are responses the IF-4 contract allows', () => {
+  it.each([
+    ['reader', readerMe],
+    ['reader and administrator', readerAdminMe],
+    ['administrator only', adminOnlyMe],
+  ])('200 for a %s', (_name, body) => {
+    expect(contractErrors(if4, 'get', '/api/v1/me', 200, 'application/json', body)).toEqual([])
+  })
+
+  it('401 without a session', () => {
+    expect(contractErrors(if4, 'get', '/api/v1/me', 401, 'application/problem+json', noSessionProblem)).toEqual([])
+  })
+
+  it('403 for an account in neither group', () => {
+    expect(contractErrors(if4, 'get', '/api/v1/me', 403, 'application/problem+json', noAccessProblem)).toEqual([])
+  })
+
+  it('the checker itself rejects what the contract does not allow', () => {
+    const bad = { ...readerMe, roles: ['reader', 'reader', 'owner'], token: 'x', authTime: 'yesterday' }
+    expect(contractErrors(if4, 'get', '/api/v1/me', 200, 'application/json', bad)).toEqual([
+      '$.roles: items are not unique',
+      '$.roles[2]: "owner" is not in the enum',
+      '$.authTime: not a date-time',
+      '$: unexpected property token',
+    ])
+    expect(contractErrors(if4, 'get', '/api/v1/me', 403, 'application/problem+json', { status: '403' })).toEqual([
+      '$: missing type',
+      '$: missing title',
+      '$: missing traceId',
+      '$.status: expected integer, got string',
+    ])
+    expect(
+      contractErrors(if4, 'get', '/api/v1/me', 403, 'application/problem+json', { ...noAccessProblem, status: 401 }),
+    ).toEqual(['$.status: expected 403'])
+    expect(
+      contractErrors(if4, 'get', '/api/v1/me', 403, 'application/problem+json', { ...noAccessProblem, title: 'No' }),
+    ).toEqual(['$.title: does not match pattern'])
+    expect(contractErrors(if4, 'get', '/api/v1/me', 500, 'application/json', {})).toEqual([
+      'GET /api/v1/me documents no 500 response',
+    ])
+    expect(contractErrors(if1, 'get', '/auth/login', 302, 'application/json', {})).toEqual([
+      'GET /auth/login 302 documents no application/json body',
+    ])
+    expect(() =>
+      contractErrors(
+        {
+          paths: {
+            '/x': {
+              get: { responses: { 200: { content: { 'a/b': { schema: { $ref: '#/components/schemas/Nope' } } } } } },
+            },
+          },
+        },
+        'get',
+        '/x',
+        200,
+        'a/b',
+        {},
+      ),
+    ).toThrow('unresolved #/components/schemas/Nope')
+  })
+})
+
+describe('loginHref builds the IF-1 start-sign-in address', () => {
+  const pattern = new RegExp(
+    (pinnedIf1.paths['/auth/login'].get.parameters[0] as { schema: { pattern: string } }).schema.pattern,
+  )
+
+  it('returns to the requested same-origin path', () => {
+    expect(loginHref({ returnTo: '/reports/daily' })).toBe('/auth/login?returnTo=%2Freports%2Fdaily')
+    expect(pattern.test('/reports/daily')).toBe(true)
+  })
+
+  it('forces a fresh Microsoft sign-in with maxAge=0', () => {
+    expect(loginHref({ returnTo: '/reports/daily', maxAge: 0 })).toBe(
+      '/auth/login?returnTo=%2Freports%2Fdaily&maxAge=0',
+    )
+  })
+
+  describe.each(Object.keys(ROUTE_PATHS) as ReportRoute[])('the %s report return path', (route) => {
+    const parameters = (if1 as typeof pinnedIf1).paths['/auth/login'].get.parameters as {
+      name: string
+      schema: { type: string; pattern: string; maxLength: number }
+    }[]
+    const returnTo = parameters.find(({ name }) => name === 'returnTo')?.schema
+
+    it.each([
+      ['a plain sign-in', {}],
+      ['a fresh sign-in with maxAge=0', { maxAge: 0 }],
+    ])('is sent as a returnTo the IF-1 schema accepts, for %s', (_name, { maxAge }: { maxAge?: number }) => {
+      const href = new URL(
+        loginHref(maxAge === undefined ? { returnTo: returnPath(route) } : { returnTo: returnPath(route), maxAge }),
+        'https://dashboard.example',
+      )
+      const sent = href.searchParams.get('returnTo') ?? ''
+      expect(href.pathname).toBe('/auth/login')
+      expect(sent).toBe(returnPath(route))
+      expect(href.searchParams.get('maxAge')).toBe(maxAge === undefined ? null : String(maxAge))
+      expect(returnTo?.type).toBe('string')
+      expect(new RegExp(returnTo?.pattern ?? '(?!)', 'u').test(sent)).toBe(true)
+      expect(sent.length).toBeLessThanOrEqual(returnTo?.maxLength ?? 0)
+    })
+  })
+
+  it('drops a returnTo the contract would refuse rather than send it', () => {
+    expect(loginHref({ returnTo: '//evil.example/x' })).toBe('/auth/login')
+    expect(loginHref({ returnTo: 'https://evil.example/' })).toBe('/auth/login')
+    expect(loginHref({})).toBe('/auth/login')
+  })
+})
+
+describe('getMe reads IF-4 into one result per documented status', () => {
+  it('200 is a signed-in account carrying exactly the server payload', async () => {
+    const { fetch, calls } = fakeFetch(json(200, readerAdminMe))
+    const result = await createApiClient(fetch).getMe()
+    expect(result).toEqual({ kind: 'signed-in', me: readerAdminMe })
+    expect(calls).toEqual([
+      {
+        url: '/api/v1/me',
+        init: { method: 'GET', credentials: 'same-origin', headers: { accept: 'application/json' }, cache: 'no-store' },
+      },
+    ])
+  })
+
+  it('401 is signed out', async () => {
+    const { fetch } = fakeFetch(problem(noSessionProblem))
+    expect(await createApiClient(fetch).getMe()).toEqual({ kind: 'signed-out' })
+  })
+
+  it('403 no-access carries the server title naming the account', async () => {
+    const { fetch } = fakeFetch(problem(noAccessProblem))
+    expect(await createApiClient(fetch).getMe()).toEqual({
+      kind: 'no-access',
+      title: "You don't have access. Signed in as p.ruiz@fabrikam.com.",
+    })
+  })
+
+  it('a 403 that is not the no-access problem is treated as unavailable, never as access', async () => {
+    const { fetch } = fakeFetch(problem({ ...noAccessProblem, type: '/problems/forbidden' }))
+    expect(await createApiClient(fetch).getMe()).toEqual({ kind: 'unavailable', traceId: noAccessProblem.traceId })
+  })
+
+  it('an undocumented status is unavailable, keeping the trace id when the body is a problem', async () => {
+    const { fetch } = fakeFetch(problem({ ...noSessionProblem, status: 503 }), new Response('oops', { status: 502 }))
+    const client = createApiClient(fetch)
+    expect(await client.getMe()).toEqual({ kind: 'unavailable', traceId: noSessionProblem.traceId })
+    expect(await client.getMe()).toEqual({ kind: 'unavailable' })
+  })
+
+  it('a network failure is unavailable', async () => {
+    const { fetch } = fakeFetch(new TypeError('Failed to fetch'))
+    expect(await createApiClient(fetch).getMe()).toEqual({ kind: 'unavailable' })
+  })
+
+  it.each([
+    ['a role outside the contract', { ...readerMe, roles: ['owner'] }],
+    ['a missing field', { ...readerMe, account: undefined }],
+    ['an unparseable limit', { ...readerMe, idleExpiresAt: 'soon' }],
+    ['roles that are not a list', { ...readerMe, roles: 'reader' }],
+    ['a body that is not an object', ['reader']],
+  ])('a 200 with %s is unavailable, never trusted', async (_name, body) => {
+    const { fetch } = fakeFetch(json(200, body))
+    expect(await createApiClient(fetch).getMe()).toEqual({ kind: 'unavailable' })
+  })
+})
+
+describe('signOut reads IF-5 into one result per status', () => {
+  it('posts to /auth/logout with the session cookie only; 204 is signed out', async () => {
+    const { fetch, calls } = fakeFetch(new Response(null, { status: 204 }))
+    expect(await createApiClient(fetch).signOut()).toBe('signed-out')
+    expect(calls).toEqual([{ url: '/auth/logout', init: { method: 'POST', credentials: 'same-origin' } }])
+  })
+
+  it('401 means there was no session left to end', async () => {
+    const { fetch } = fakeFetch(problem(noSessionProblem))
+    expect(await createApiClient(fetch).signOut()).toBe('already-signed-out')
+  })
+
+  it.each([
+    ['a refusal', problem({ ...noSessionProblem, status: 403 })],
+    ['a server error', problem({ ...noSessionProblem, status: 500 })],
+    ['an undocumented success', new Response(null, { status: 200 })],
+  ])('%s is a sign-out that did not complete', async (_name, response) => {
+    const { fetch } = fakeFetch(response)
+    expect(await createApiClient(fetch).signOut()).toBe('failed')
+  })
+
+  it('a network failure is a sign-out that did not complete', async () => {
+    const { fetch } = fakeFetch(new TypeError('Failed to fetch'))
+    expect(await createApiClient(fetch).signOut()).toBe('failed')
+  })
+})

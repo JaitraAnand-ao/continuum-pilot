@@ -1,0 +1,107 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Entra Sign-In Reports BFF - current account",
+    "version": "1.0.0",
+    "description": "IF-4, provided by ST-1 (CMP-2). The signed-in account and its roles, used by every screen for the REPORTS and SETTINGS navigation groups (UQ-4) and by the idle-expiry warning. The server still decides access on every route (AD-7)."
+  },
+  "paths": {
+    "/api/v1/me": {
+      "get": {
+        "operationId": "getMe",
+        "summary": "The signed-in account, roles and session limits",
+        "security": [{ "sessionCookie": [] }],
+        "responses": {
+          "200": {
+            "description": "The current session.",
+            "headers": { "Cache-Control": { "schema": { "type": "string", "const": "no-store" } } },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["account", "displayName", "roles", "authTime", "idleExpiresAt", "absoluteExpiresAt"],
+                  "properties": {
+                    "account": {
+                      "type": "string",
+                      "description": "UPN of the signed-in account, shown on the top bar and the denied frame.",
+                      "examples": ["m.duarte@contoso.com"]
+                    },
+                    "displayName": { "type": "string" },
+                    "roles": {
+                      "type": "array",
+                      "uniqueItems": true,
+                      "items": { "type": "string", "enum": ["reader", "config.read", "config.write", "config.approve"] }
+                    },
+                    "authTime": {
+                      "type": "string",
+                      "format": "date-time",
+                      "description": "When the user last authenticated at Microsoft (UTC)."
+                    },
+                    "idleExpiresAt": {
+                      "type": "string",
+                      "format": "date-time",
+                      "description": "15-minute idle limit; the SPA warns at least 2 minutes before."
+                    },
+                    "absoluteExpiresAt": {
+                      "type": "string",
+                      "format": "date-time",
+                      "description": "8-hour absolute limit."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid session.",
+            "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/Problem" } } }
+          },
+          "403": {
+            "description": "Signed in but in neither the reader nor the administrator group (type /problems/no-access). An access-denied audit event is written, and no report data is returned. The denied account reaches SCR-1 only through the title, which names the signed-in account's UPN (see NoAccessProblem); no field is added to problem+json.",
+            "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/NoAccessProblem" } } }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "sessionCookie": {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "__Host-sr_session",
+        "description": "Opaque httpOnly, Secure, SameSite=Strict session cookie issued by the BFF (AD-5)."
+      }
+    },
+    "schemas": {
+      "Problem": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["type", "title", "status", "traceId"],
+        "properties": {
+          "type": { "type": "string", "format": "uri-reference" },
+          "title": { "type": "string" },
+          "status": { "type": "integer" },
+          "traceId": { "type": "string", "pattern": "^[0-9a-f]{32}$" }
+        }
+      },
+      "NoAccessProblem": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["type", "title", "status", "traceId"],
+        "properties": {
+          "type": { "type": "string", "const": "/problems/no-access" },
+          "title": {
+            "type": "string",
+            "pattern": "^You don't have access\\. Signed in as \\S+@\\S+\\.$",
+            "description": "Always 'You don't have access. Signed in as <UPN>.', where <UPN> is the signed-in account's UPN from the validated Keycloak token in the session. SCR-1's denied frame shows the fixed heading 'You don't have access', renders this title verbatim as the line naming the account, and uses it as the assertive alert text (ST-1 AC-5).",
+            "examples": ["You don't have access. Signed in as m.duarte@contoso.com."]
+          },
+          "status": { "type": "integer", "const": 403 },
+          "traceId": { "type": "string", "pattern": "^[0-9a-f]{32}$" }
+        }
+      }
+    }
+  }
+}
