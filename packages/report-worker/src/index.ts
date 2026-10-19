@@ -1,2 +1,11 @@
 /* CMP-3: consumes report.generate and report.purge. */
-export {}
+export * from './clock.js'
+export * from './collect.js'
+export * from './deadline-check.js'
+export * from './generate.js'
+export * from './metrics.js'
+export * from './ports.js'
+export * from './report.js'
+export * from './signins.js'
+export * from './window.js'
+export * from './worker.js'
