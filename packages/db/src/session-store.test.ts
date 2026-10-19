@@ -197,6 +197,26 @@ describe.skipIf(!testDatabaseUrl)('session store (AD-5) on PostgreSQL as sr_api'
     await expect(store().create(newSession({ roles: ['owner' as 'reader'] }))).rejects.toThrow()
   })
 
+  it('a refused write surfaces no username, ciphertext or other bound parameter', async () => {
+    clock.set(signIn)
+    const s = newSession({ username: 'leaky.person@contoso.example', roles: ['owner' as 'reader'] })
+    const error: unknown = await store()
+      .create(s)
+      .then(
+        () => null,
+        (e: unknown) => e,
+      )
+    expect(error).toBeInstanceOf(Error)
+    const record = error as Error & Record<string, unknown>
+    expect(record['constraint']).toBe('sessions_roles_known')
+    const ciphertextHex = s.refreshToken.ciphertext.toString('hex')
+    const ownProperties = Object.fromEntries(Object.getOwnPropertyNames(record).map((name) => [name, record[name]]))
+    for (const surface of [record.message, JSON.stringify(ownProperties), String(record['detail'])]) {
+      expect(surface).not.toContain('leaky.person')
+      expect(surface).not.toContain(ciphertextHex)
+    }
+  })
+
   it('refuses a session ID hash or GCM parts of the wrong length', async () => {
     const insert = (idHash: Buffer, iv: Buffer, tag: Buffer) =>
       owner.query(
@@ -222,7 +242,18 @@ describe.skipIf(!testDatabaseUrl)('session store (AD-5) on PostgreSQL as sr_api'
   })
 
   it('sr_api cannot rewrite who a session belongs to, its roles or its limits', async () => {
-    for (const column of ['roles', 'subject', 'absolute_expires_at', 'created_at']) {
+    for (const column of [
+      'roles',
+      'subject',
+      'absolute_expires_at',
+      'created_at',
+      'id_hash',
+      'username',
+      'refresh_token_ciphertext',
+      'refresh_token_iv',
+      'refresh_token_tag',
+      'idp_session_id',
+    ]) {
       await expect(api.query(`update sessions set ${column} = ${column}`)).rejects.toThrow(/permission denied/)
     }
   })

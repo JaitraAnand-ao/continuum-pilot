@@ -34,6 +34,11 @@ describe('seal and open (AES-256-GCM)', () => {
     expect(() => open(key, { ...sealed, iv: flip(sealed.iv) }, aad)).toThrow()
   })
 
+  it('rejects a tag truncated to 12 bytes: only the full 16-byte tag is accepted', () => {
+    const sealed = seal(key, 'refresh', aad)
+    expect(() => open(key, { ...sealed, tag: sealed.tag.subarray(0, 12) }, aad)).toThrow()
+  })
+
   it('rejects a ciphertext moved to another row (bound by AAD)', () => {
     const sealed = seal(key, 'refresh', aad)
     expect(() => open(key, sealed, hashSecret('other-session'))).toThrow()

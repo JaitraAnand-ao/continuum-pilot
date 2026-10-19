@@ -122,6 +122,21 @@ describe.skipIf(!testDatabaseUrl)('audit log as sr_api, verified as sr_auditor',
     await expect(api.query('delete from audit_events')).rejects.toThrow(/permission denied/)
   })
 
+  it('sr_api cannot choose the chain columns: an insert naming position, prev_hash or hash is refused', async () => {
+    for (const [column, value] of [
+      ['position', '1'],
+      ['prev_hash', `'\\x00'::bytea`],
+      ['hash', `'\\x00'::bytea`],
+    ] as const) {
+      await expect(
+        api.query(
+          `insert into audit_events (occurred_at, event_type, trace_id, ${column}) values (now(), 'sign_in', $1, ${value})`,
+          [traceId()],
+        ),
+      ).rejects.toThrow(/permission denied/)
+    }
+  })
+
   it('sr_auditor may read but not append', async () => {
     await expect(auditor.query('select count(*) from audit_events')).resolves.toBeDefined()
     await expect(

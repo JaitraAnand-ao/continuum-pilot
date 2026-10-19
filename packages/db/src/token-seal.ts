@@ -10,6 +10,7 @@ export interface Sealed {
 
 const KEY_BYTES = 32
 const IV_BYTES = 12
+const TAG_BYTES = 16
 
 export function hashSecret(value: string): Buffer {
   return createHash('sha256').update(value, 'utf8').digest()
@@ -22,13 +23,15 @@ function checkKey(key: Buffer): void {
 export function seal(key: Buffer, plaintext: string, aad: Buffer): Sealed {
   checkKey(key)
   const iv = randomBytes(IV_BYTES)
-  const cipher = createCipheriv('aes-256-gcm', key, iv).setAAD(aad)
+  const cipher = createCipheriv('aes-256-gcm', key, iv, { authTagLength: TAG_BYTES }).setAAD(aad)
   const ciphertext = Buffer.concat([cipher.update(plaintext, 'utf8'), cipher.final()])
   return { ciphertext, iv, tag: cipher.getAuthTag() }
 }
 
 export function open(key: Buffer, sealed: Sealed, aad: Buffer): string {
   checkKey(key)
-  const decipher = createDecipheriv('aes-256-gcm', key, sealed.iv).setAAD(aad).setAuthTag(sealed.tag)
+  const decipher = createDecipheriv('aes-256-gcm', key, sealed.iv, { authTagLength: TAG_BYTES })
+    .setAAD(aad)
+    .setAuthTag(sealed.tag)
   return Buffer.concat([decipher.update(sealed.ciphertext), decipher.final()]).toString('utf8')
 }

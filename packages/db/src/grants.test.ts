@@ -1,5 +1,8 @@
+import { readFile } from 'node:fs/promises'
+import { join } from 'node:path'
 import type pg from 'pg'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { MIGRATIONS_FOLDER } from './migrate.js'
 import { DB_ROLES } from './roles.js'
 import { migratedOwnerPool, poolAs, testDatabaseUrl } from './test-database.js'
 
@@ -63,13 +66,36 @@ describe.skipIf(!testDatabaseUrl)('per-role grants (AD-10) for the sign-in table
     expect(rows).toEqual([])
   })
 
-  it('no role is granted ALL on any sign-in table', async () => {
-    const { rows } = await owner.query<{ grantee: string; table_name: string; n: string }>(
-      `select grantee, table_name, count(*) as n from information_schema.role_table_grants
+  it('grants each role exactly its table privileges on the sign-in tables, and nothing more', async () => {
+    const { rows } = await owner.query<{ grantee: string; table_name: string; privilege_type: string }>(
+      `select grantee, table_name, privilege_type from information_schema.role_table_grants
         where grantee = any($1) and table_name in ('sessions', 'login_transactions', 'audit_events')
-        group by grantee, table_name`,
+        order by grantee, table_name, privilege_type`,
       [Object.values(DB_ROLES)],
     )
-    for (const row of rows) expect(Number(row.n)).toBeLessThan(4)
+    expect(rows).toEqual([
+      { grantee: DB_ROLES.api, table_name: 'login_transactions', privilege_type: 'DELETE' },
+      { grantee: DB_ROLES.api, table_name: 'login_transactions', privilege_type: 'INSERT' },
+      { grantee: DB_ROLES.api, table_name: 'login_transactions', privilege_type: 'SELECT' },
+      { grantee: DB_ROLES.api, table_name: 'sessions', privilege_type: 'DELETE' },
+      { grantee: DB_ROLES.api, table_name: 'sessions', privilege_type: 'INSERT' },
+      { grantee: DB_ROLES.api, table_name: 'sessions', privilege_type: 'SELECT' },
+      { grantee: DB_ROLES.auditor, table_name: 'audit_events', privilege_type: 'SELECT' },
+    ])
+  })
+
+  it('the role-creation block is idempotent: re-run where the roles exist, still exactly four NOLOGIN roles', async () => {
+    const migration = await readFile(join(MIGRATIONS_FOLDER, '0001_sign_in_roles_grants_chain.sql'), 'utf8')
+    const block = migration.split('--> statement-breakpoint').find((statement) => statement.includes('CREATE ROLE'))
+    expect(block).toBeDefined()
+    await expect(owner.query(block as string)).resolves.toBeDefined()
+    const { rows } = await owner.query<{ rolname: string; rolcanlogin: boolean }>(
+      `select rolname, rolcanlogin from pg_roles where rolname like 'sr\\_%' order by rolname`,
+    )
+    expect(rows).toEqual(
+      Object.values(DB_ROLES)
+        .sort()
+        .map((rolname) => ({ rolname, rolcanlogin: false })),
+    )
   })
 })
