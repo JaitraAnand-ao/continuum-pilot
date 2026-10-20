@@ -1,7 +1,16 @@
 import { collectPages } from './collect.js'
 import { figuresOf } from './figures.js'
-import { SIGN_IN_TYPES, type PublishedReport, type RiskDetection, type SignIn, type SourceId } from './model.js'
+import {
+  SIGN_IN_TYPES,
+  SOURCES,
+  type PublishedReport,
+  type RiskDetection,
+  type RiskyUser,
+  type SignIn,
+  type SourceId,
+} from './model.js'
 import { METRIC_NAMESPACE, type Clock, type GraphReadPort, type MetricsPort, type ReportStore } from './ports.js'
+import { evaluateRiskFlags } from './risk.js'
 import { contentHash, snapshotHashInput, totalsOf } from './snapshot.js'
 import { isReportDate, retryDeadline, windowContains, windowFor } from './window.js'
 
@@ -32,12 +41,20 @@ export async function generateReport(reportDate: string, deps: GenerateDeps): Pr
     if (result.ok) signIns.push(...result.items.filter((signIn) => windowContains(window, signIn.createdDateTime)))
     else missingSources.push(`signIns.${type}`)
   }
+  /* Identity Protection is stored whole or not at all: detections without their users (or the reverse) would
+   * make the flags computed from them look complete when they are not. */
   const risk = await collectPages((cursor) => deps.graph.riskDetectionsPage({ window, cursor }), options)
-  const riskDetections: RiskDetection[] = risk.ok ? risk.items : []
-  if (!risk.ok) missingSources.push('identityProtection.riskDetections')
+  /* Nothing is fetched once detections have run out of time: the 07:00 UTC cut-off holds for every call. */
+  const users = risk.ok ? await collectPages((cursor) => deps.graph.riskyUsersPage({ cursor }), options) : undefined
+  const riskDetections: RiskDetection[] = []
+  const riskyUsers: RiskyUser[] = []
+  if (risk.ok && users?.ok) {
+    riskDetections.push(...risk.items)
+    riskyUsers.push(...users.items)
+  } else missingSources.push('identityProtection.riskDetections')
 
   const now = deps.clock.now().toISOString()
-  if (missingSources.length === SIGN_IN_TYPES.length + 1) {
+  if (missingSources.length === SOURCES.length) {
     await deps.store.recordNotGenerated({ reportDate, missingSources, recordedAt: now })
     await deps.metrics.put({
       namespace: METRIC_NAMESPACE,
@@ -59,6 +76,8 @@ export async function generateReport(reportDate: string, deps: GenerateDeps): Pr
     figures: figuresOf(signIns),
     signIns,
     riskDetections,
+    riskyUsers,
+    riskFlags: evaluateRiskFlags({ signIns, riskDetections, riskyUsers }, missingSources),
   }
   const published = await deps.store.publish({
     ...draft,

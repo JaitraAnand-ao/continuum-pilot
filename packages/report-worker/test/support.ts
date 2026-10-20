@@ -12,6 +12,7 @@ import {
   type ReportStore,
   type ReportWindow,
   type RiskDetection,
+  type RiskyUser,
   type SignIn,
   type SignInType,
 } from '../src/index.js'
@@ -54,6 +55,13 @@ export function signIn(overrides: Partial<SignIn> & { id: string }): SignIn {
       isCompliant: true,
       isManaged: true,
     },
+    correlationId: `req-${overrides.id}`,
+    userId: 'u-default',
+    userPrincipalName: 'default@contoso.example',
+    ipAddress: '203.0.113.10',
+    location: { city: 'Dublin', state: 'Leinster', countryOrRegion: 'IE' },
+    riskLevelAggregated: 'none',
+    conditionalAccessStatus: 'success',
     ...overrides,
   }
 }
@@ -63,6 +71,17 @@ export function riskDetection(overrides: Partial<RiskDetection> & { id: string }
     detectedDateTime: '2026-10-11T12:00:00.000Z',
     riskLevel: 'medium',
     riskEventType: 'unfamiliarFeatures',
+    userId: 'u-default',
+    ...overrides,
+  }
+}
+
+export function riskyUser(overrides: Partial<RiskyUser> & { id: string }): RiskyUser {
+  return {
+    userPrincipalName: `${overrides.id}@contoso.example`,
+    riskState: 'atRisk',
+    riskLevel: 'high',
+    riskLastUpdatedDateTime: '2026-10-11T12:00:00.000Z',
     ...overrides,
   }
 }
@@ -73,7 +92,9 @@ type Failure = 'throttle' | 'error'
 export class FakeGraph implements GraphReadPort {
   readonly calls: string[] = []
   readonly signInFailures = new Map<string, Failure[]>()
+  /* Identity Protection as a whole: both the risk detection and the risky user endpoints fail. */
   failRisk: 'always' | 'never' = 'never'
+  failRiskyUsers: 'always' | 'never' = 'never'
   failSignIns: 'always' | 'never' = 'never'
   retryAfterSeconds = 5
 
@@ -83,6 +104,7 @@ export class FakeGraph implements GraphReadPort {
     signIns: SignIn[] = [],
     private readonly risks: RiskDetection[] = [],
     private readonly pageSize = 1000,
+    private readonly riskyUsers: RiskyUser[] = [],
   ) {
     for (const type of SIGN_IN_TYPES) this.byType.set(type, [])
     for (const s of signIns) this.byType.get(s.signInEventType)!.push(s)
@@ -112,6 +134,12 @@ export class FakeGraph implements GraphReadPort {
     this.calls.push(`risk:${query.cursor ?? '0'}`)
     if (this.failRisk === 'always') throw new Error('Identity Protection 500')
     return this.page(this.risks, query.cursor)
+  }
+
+  async riskyUsersPage(query: { cursor: string | undefined }): Promise<Page<RiskyUser>> {
+    this.calls.push(`riskyUsers:${query.cursor ?? '0'}`)
+    if (this.failRisk === 'always' || this.failRiskyUsers === 'always') throw new Error('Identity Protection 500')
+    return this.page(this.riskyUsers, query.cursor)
   }
 
   private page<T>(items: T[], cursor: string | undefined): Page<T> {

@@ -18,6 +18,8 @@ export function snapshotHashInput(report: Omit<PublishedReport, 'contentHash' | 
     figures: report.figures,
     signIns: report.signIns,
     riskDetections: report.riskDetections,
+    riskyUsers: report.riskyUsers,
+    riskFlags: report.riskFlags,
   }
 }
 
