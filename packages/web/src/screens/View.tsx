@@ -1,5 +1,5 @@
 import type { SessionController, ViewState } from '../session/controller'
-import { AppShell } from './AppShell'
+import { AppShell, type HistoryView } from './AppShell'
 import { CheckingScreen } from './CheckingScreen'
 import { IdleWarningDialog } from './IdleWarningDialog'
 import { LiveRegion } from './LiveRegion'
@@ -13,7 +13,13 @@ export type Actions = Pick<
   'start' | 'signIn' | 'navigate' | 'staySignedIn' | 'signOut' | 'signInWithDifferentAccount'
 >
 
-function ScreenFor({ state, actions }: { state: ViewState; actions: Actions }) {
+interface ViewProps {
+  state: ViewState
+  actions: Actions
+  history?: HistoryView | undefined
+}
+
+function ScreenFor({ state, actions, history }: ViewProps) {
   const { screen } = state
   switch (screen.name) {
     case 'checking':
@@ -42,6 +48,7 @@ function ScreenFor({ state, actions }: { state: ViewState; actions: Actions }) {
             signOutFailed={state.signOutFailed}
             onNavigate={(path) => void actions.navigate(path)}
             onSignOut={() => void actions.signOut()}
+            history={history}
           />
           {state.idleWarning && (
             <IdleWarningDialog
@@ -54,10 +61,10 @@ function ScreenFor({ state, actions }: { state: ViewState; actions: Actions }) {
   }
 }
 
-export function View({ state, actions }: { state: ViewState; actions: Actions }) {
+export function View({ state, actions, history }: ViewProps) {
   return (
     <>
-      <ScreenFor state={state} actions={actions} />
+      <ScreenFor state={state} actions={actions} history={history} />
       <LiveRegion announcement={state.announcement} />
     </>
   )

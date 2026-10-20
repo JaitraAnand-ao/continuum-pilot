@@ -169,6 +169,11 @@ export class SessionController {
     this.update({ signOutFailed: true }, null, { politeness: 'assertive', text: TEXT.signOutFailed })
   }
 
+  /* A page's own controller moves focus and speaks through the one pair of live regions. */
+  notify = (focus: string | null, announcement: Omit<Announcement, 'id'> | null): void => {
+    this.update({}, focus, announcement)
+  }
+
   dispose = (): void => {
     this.generation += 1
     this.clearTimers()

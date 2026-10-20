@@ -32,9 +32,40 @@ export interface Api {
   signOut(): Promise<boolean>
 }
 
+export type HistoryStatus = 'available' | 'generated_late' | 'not_generated'
+
+/* IF-27 GET /api/v1/report-history: one item per UTC day, newest first. */
+export interface HistoryDay {
+  reportDate: string
+  status: HistoryStatus
+  generatedAt: string | null
+  signIns: number | null
+  failed: number | null
+  flagCount: number | null
+  emailedAt: string | null
+}
+
+export interface ReportHistory {
+  totalDays: number
+  firstReportDueAt: string | null
+  items: HistoryDay[]
+}
+
+export type HistoryResult =
+  | { kind: 'ok'; history: ReportHistory }
+  | { kind: 'unauthenticated' }
+  | { kind: 'forbidden' }
+  | { kind: 'failed'; status: number | null; traceId: string | null }
+
+export interface HistoryApi {
+  getReportHistory(): Promise<HistoryResult>
+}
+
 export type Fetch = (input: string, init: RequestInit) => Promise<Response>
 
 export const ME_PATH = '/api/v1/me'
+/* IF-27. */
+export const REPORT_HISTORY_PATH = '/api/v1/report-history'
 /* IF-1. */
 export const LOGIN_PATH = '/auth/login'
 /* IF-5: ends the BFF session and clears __Host-sr_session. */
@@ -59,6 +90,12 @@ function isProblem(value: unknown): value is Problem {
   )
 }
 
+function isHistory(value: unknown): value is ReportHistory {
+  if (typeof value !== 'object' || value === null) return false
+  const candidate = value as Record<string, unknown>
+  return Array.isArray(candidate.items) && typeof candidate.totalDays === 'number'
+}
+
 async function readJson(response: Response): Promise<unknown> {
   try {
     return await response.json()
@@ -67,25 +104,41 @@ async function readJson(response: Response): Promise<unknown> {
   }
 }
 
-export function createApi(fetchImpl: Fetch): Api {
+export function createApi(fetchImpl: Fetch): Api & HistoryApi {
+  /* Every GET carries only the session cookie; null means the request never got an answer. */
+  const get = async (path: string): Promise<{ response: Response; body: unknown } | null> => {
+    try {
+      const response = await fetchImpl(path, {
+        method: 'GET',
+        credentials: 'same-origin',
+        cache: 'no-store',
+        headers: { accept: 'application/json, application/problem+json' },
+      })
+      return { response, body: await readJson(response) }
+    } catch {
+      return null
+    }
+  }
+  const failed = (response: Response, body: unknown) =>
+    ({ kind: 'failed', status: response.status, traceId: isProblem(body) ? body.traceId : null }) as const
   return {
     async getMe() {
-      let response: Response
-      try {
-        response = await fetchImpl(ME_PATH, {
-          method: 'GET',
-          credentials: 'same-origin',
-          cache: 'no-store',
-          headers: { accept: 'application/json, application/problem+json' },
-        })
-      } catch {
-        return { kind: 'failed', status: null, traceId: null }
-      }
-      const body = await readJson(response)
+      const answer = await get(ME_PATH)
+      if (answer === null) return { kind: 'failed', status: null, traceId: null }
+      const { response, body } = answer
       if (response.status === 200 && body !== null) return { kind: 'ok', me: body as Me }
       if (response.status === 401) return { kind: 'unauthenticated' }
       if (response.status === 403 && isProblem(body)) return { kind: 'denied', problem: body }
-      return { kind: 'failed', status: response.status, traceId: isProblem(body) ? body.traceId : null }
+      return failed(response, body)
+    },
+    async getReportHistory() {
+      const answer = await get(REPORT_HISTORY_PATH)
+      if (answer === null) return { kind: 'failed', status: null, traceId: null }
+      const { response, body } = answer
+      if (response.status === 200 && isHistory(body)) return { kind: 'ok', history: body }
+      if (response.status === 401) return { kind: 'unauthenticated' }
+      if (response.status === 403) return { kind: 'forbidden' }
+      return failed(response, body)
     },
     async signOut() {
       try {
