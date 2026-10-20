@@ -1,0 +1,256 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Entra Sign-In Reports BFF - tighten a detection threshold",
+    "version": "1.0.0",
+    "description": "IF-41, provided by ST-15 (CMP-2). Saves a stricter threshold (a lower count or a wider window) as a new config version without approval and writes a config.applied audit event. Loosening is refused with 409 here; ST-16 turns it into a proposal."
+  },
+  "paths": {
+    "/api/v1/detection-settings/thresholds/{thresholdKey}": {
+      "put": {
+        "operationId": "tightenThreshold",
+        "summary": "Apply a stricter threshold",
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "thresholdKey",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": ["repeated_failures", "password_spray"]
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["configVersionId", "count", "windowMinutes"],
+                "properties": {
+                  "configVersionId": {
+                    "type": "string",
+                    "format": "uuid",
+                    "description": "The version the administrator was looking at; a newer one answers 409."
+                  },
+                  "count": {
+                    "type": "number"
+                  },
+                  "windowMinutes": {
+                    "type": "number"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Applied.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["configVersionId", "appliesFromReportDate", "threshold"],
+                  "properties": {
+                    "configVersionId": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "appliesFromReportDate": {
+                      "type": "string",
+                      "format": "date",
+                      "description": "The first daily report the change applies to: the report covering the UTC day the change was saved."
+                    },
+                    "threshold": {
+                      "$ref": "#/components/schemas/Threshold"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed, a count that is not a whole number of 1 or more ('Enter a whole number of 1 or more'), or a window outside 1 to 1440 minutes; nothing is saved.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No session.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The session lacks config.write.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Nothing changed, the change loosens detection (ST-16), or the configuration moved on since configVersionId; nothing is saved.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "The body is not application/json.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The settings store did not respond: 'Couldn't save. Your change wasn't applied and nothing was sent for approval.'",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "sessionCookie": {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "__Host-sr_session"
+      }
+    },
+    "schemas": {
+      "Threshold": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "thresholdKey",
+          "count",
+          "windowMinutes",
+          "defaultCount",
+          "defaultWindowMinutes",
+          "inEffectSince",
+          "pending"
+        ],
+        "properties": {
+          "thresholdKey": {
+            "type": "string",
+            "enum": ["repeated_failures", "password_spray"]
+          },
+          "count": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "windowMinutes": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 1440
+          },
+          "defaultCount": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "defaultWindowMinutes": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "inEffectSince": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "pending": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/PendingRef"
+              }
+            ]
+          }
+        }
+      },
+      "PendingRef": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["proposalId", "summary", "proposedBy", "proposedAt"],
+        "properties": {
+          "proposalId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "summary": {
+            "type": "string"
+          },
+          "proposedBy": {
+            "type": "string"
+          },
+          "proposedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "Problem": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["type", "title", "status", "traceId"],
+        "properties": {
+          "type": {
+            "type": "string",
+            "format": "uri-reference"
+          },
+          "title": {
+            "type": "string"
+          },
+          "status": {
+            "type": "integer"
+          },
+          "traceId": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{32}$"
+          }
+        }
+      }
+    }
+  }
+}

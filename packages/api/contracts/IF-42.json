@@ -1,0 +1,233 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Entra Sign-In Reports BFF - add a sensitive application",
+    "version": "1.0.0",
+    "description": "IF-42, provided by ST-15 (CMP-2). Adds an application seen in the tenant's sign-ins to the sensitive-app list as a new config version without approval and writes a config.applied audit event."
+  },
+  "paths": {
+    "/api/v1/detection-settings/sensitive-apps": {
+      "post": {
+        "operationId": "addSensitiveApp",
+        "summary": "Add a sensitive application",
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["configVersionId", "appId"],
+                "properties": {
+                  "configVersionId": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "appId": {
+                    "type": "string",
+                    "format": "uuid"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Added.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["configVersionId", "appliesFromReportDate", "app"],
+                  "properties": {
+                    "configVersionId": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "appliesFromReportDate": {
+                      "type": "string",
+                      "format": "date",
+                      "description": "The first daily report the change applies to: the report covering the UTC day the change was saved."
+                    },
+                    "app": {
+                      "$ref": "#/components/schemas/SensitiveApp"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed request.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No session.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The session lacks config.write.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Already on the list, or the configuration moved on since configVersionId; nothing is saved.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "The body is not application/json.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "'That isn't an application ID seen in this tenant's sign-ins'; nothing is saved.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The settings store did not respond: 'Couldn't save. Your change wasn't applied and nothing was sent for approval.'",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "sessionCookie": {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "__Host-sr_session"
+      }
+    },
+    "schemas": {
+      "SensitiveApp": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["appId", "appName", "addedBy", "addedAt", "pending"],
+        "properties": {
+          "appId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "appName": {
+            "type": "string"
+          },
+          "addedBy": {
+            "type": "string"
+          },
+          "addedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "pending": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/PendingRef"
+              }
+            ]
+          }
+        }
+      },
+      "PendingRef": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["proposalId", "summary", "proposedBy", "proposedAt"],
+        "properties": {
+          "proposalId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "summary": {
+            "type": "string"
+          },
+          "proposedBy": {
+            "type": "string"
+          },
+          "proposedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "Problem": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["type", "title", "status", "traceId"],
+        "properties": {
+          "type": {
+            "type": "string",
+            "format": "uri-reference"
+          },
+          "title": {
+            "type": "string"
+          },
+          "status": {
+            "type": "integer"
+          },
+          "traceId": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{32}$"
+          }
+        }
+      }
+    }
+  }
+}
