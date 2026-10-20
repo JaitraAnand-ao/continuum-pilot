@@ -1,13 +1,17 @@
-import { sql } from 'drizzle-orm'
+import { type SQL, sql } from 'drizzle-orm'
 import {
   bigint,
   check,
   customType,
   date,
+  boolean,
+  foreignKey,
   index,
+  inet,
   integer,
   jsonb,
   pgTable,
+  primaryKey,
   text,
   timestamp,
   uuid,
@@ -81,13 +85,21 @@ export const REPORT_SOURCES = [
   'signIns.servicePrincipal',
   'signIns.managedIdentity',
   'identityProtection.riskDetections',
+  'identityProtection.riskyUsers',
 ] as const
 export type ReportSource = (typeof REPORT_SOURCES)[number]
 
 export const REPORT_STATUSES = ['complete', 'incomplete'] as const
 export type ReportStatus = (typeof REPORT_STATUSES)[number]
 
-const KNOWN_SOURCES = sql`ARRAY['signIns.interactiveUser', 'signIns.nonInteractiveUser', 'signIns.servicePrincipal', 'signIns.managedIdentity', 'identityProtection.riskDetections']::text[]`
+const KNOWN_SOURCES = sql`ARRAY['signIns.interactiveUser', 'signIns.nonInteractiveUser', 'signIns.servicePrincipal', 'signIns.managedIdentity', 'identityProtection.riskDetections', 'identityProtection.riskyUsers']::text[]`
+
+/* ST-9: when either Identity Protection collection is missing, neither risk category can be evaluated. */
+export const IDENTITY_PROTECTION_SOURCES = [
+  'identityProtection.riskDetections',
+  'identityProtection.riskyUsers',
+] as const satisfies readonly ReportSource[]
+const IDENTITY_PROTECTION = sql`ARRAY['identityProtection.riskDetections', 'identityProtection.riskyUsers']::text[]`
 
 /* One published report per UTC day, written once with its snapshot in a single statement and never changed:
  * UPDATE and TRUNCATE are rejected by triggers (migration 0003). The window is exactly 00:00Z of the date up to
@@ -103,6 +115,9 @@ export const reports = pgTable(
     total: integer('total').notNull(),
     successful: integer('successful').notNull(),
     failed: integer('failed').notNull(),
+    /* ST-9: NULL when Identity Protection could not be read, so a category not evaluated is never a quiet zero. */
+    riskySignIns: integer('risky_sign_ins'),
+    riskyUsers: integer('risky_users'),
     snapshot: jsonb('snapshot').notNull(),
     contentHash: text('content_hash').notNull(),
     publishedAt: instant('published_at').notNull(),
@@ -125,6 +140,16 @@ export const reports = pgTable(
       'report_total_matches_snapshot',
       sql`CASE WHEN jsonb_typeof(${t.snapshot} -> 'signIns') = 'array' THEN jsonb_array_length(${t.snapshot} -> 'signIns') = ${t.total} ELSE false END`,
     ),
+    check('report_risky_counts_evaluated_together', sql`(${t.riskySignIns} IS NULL) = (${t.riskyUsers} IS NULL)`),
+    check('report_risky_counts_non_negative', sql`${t.riskySignIns} >= 0 AND ${t.riskyUsers} >= 0`),
+    check(
+      'report_risky_not_evaluated_without_identity_protection',
+      sql`NOT (${t.missingSources} && ${IDENTITY_PROTECTION}) OR (${t.riskySignIns} IS NULL AND ${t.riskyUsers} IS NULL)`,
+    ),
+    check(
+      'report_risky_snapshot_holds_risk_data',
+      sql`${t.riskySignIns} IS NULL OR COALESCE(jsonb_typeof(${t.snapshot} -> 'riskDetections') = 'array' AND jsonb_typeof(${t.snapshot} -> 'riskyUsers') = 'array', false)`,
+    ),
     check('report_content_hash_sha256', sql`${t.contentHash} ~ '^[0-9a-f]{64}$'`),
     index('report_published_at_idx').on(t.publishedAt),
   ],
@@ -142,5 +167,123 @@ export const reportNotGenerated = pgTable(
   (t) => [
     check('report_not_generated_missing_sources_present', sql`cardinality(${t.missingSources}) > 0`),
     check('report_not_generated_missing_sources_known', sql`${t.missingSources} <@ ${KNOWN_SOURCES}`),
+  ],
+)
+
+/* ST-9: the level a flag is raised at or above, the user risk states that are flagged, and the Conditional Access
+ * results Entra records. The rule itself is applied in domain; these CHECKs keep a stored flag consistent with it. */
+export const RISK_TRIGGER_LEVELS = ['medium', 'high'] as const
+export type RiskTriggerLevel = (typeof RISK_TRIGGER_LEVELS)[number]
+
+export const FLAGGED_RISK_STATES = ['atRisk', 'confirmedCompromised'] as const
+export type FlaggedRiskState = (typeof FLAGGED_RISK_STATES)[number]
+
+export const CONDITIONAL_ACCESS_STATUSES = ['success', 'failure', 'notApplied', 'unknownFutureValue'] as const
+export type ConditionalAccessStatus = (typeof CONDITIONAL_ACCESS_STATUSES)[number]
+
+/* The order of the levels a flag may hold; NULL for low, none and anything else, which no flag may hold. */
+const riskRank = (level: SQL) => sql`(CASE ${level} WHEN 'medium' THEN 2 WHEN 'high' THEN 3 END)`
+const meetsTrigger = (observed: SQL, trigger: SQL) =>
+  sql`${riskRank(observed)} IS NOT NULL AND ${riskRank(trigger)} IS NOT NULL AND ${riskRank(observed)} >= ${riskRank(trigger)}`
+/* Holds at least one character that is not whitespace (a tab or newline alone is blank too). */
+const present = (field: SQL) => sql`${field} ~ '[^[:space:]]'`
+/* An evidence field Entra left empty is stored as NULL, read as not recorded; a blank string is never stored. */
+const recordedOrNull = (...fields: SQL[]) =>
+  sql.join(
+    fields.map((f) => present(f)),
+    sql` AND `,
+  )
+
+export interface RiskDetectionEvidence {
+  id: string
+  riskEventType: string
+  riskLevel: string
+  detectedDateTime: string
+}
+
+/* One row per sign-in flagged in a published report, with the trigger it was raised against, the observed
+ * aggregated risk level and its evidence. Written with the report and never changed: UPDATE and TRUNCATE are
+ * rejected by triggers, and the report's risky_sign_ins must equal its rows at commit (migration 0005). */
+export const reportRiskySignInFlags = pgTable(
+  'report_risky_sign_in_flag',
+  {
+    reportDate: date('report_date', { mode: 'string' }).notNull(),
+    /* The sign-in's id, shown in Entra as its request ID. */
+    requestId: text('request_id').notNull(),
+    triggerLevel: text('trigger_level').$type<RiskTriggerLevel>().notNull(),
+    observedRiskLevel: text('observed_risk_level').$type<RiskTriggerLevel>().notNull(),
+    signedInAt: instant('signed_in_at').notNull(),
+    userId: text('user_id'),
+    userPrincipalName: text('user_principal_name'),
+    appId: text('app_id'),
+    appDisplayName: text('app_display_name'),
+    ipAddress: inet('ip_address'),
+    location: text('location'),
+    deviceCompliant: boolean('device_compliant'),
+    conditionalAccessStatus: text('conditional_access_status').$type<ConditionalAccessStatus>(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.reportDate, t.requestId] }),
+    foreignKey({ columns: [t.reportDate], foreignColumns: [reports.reportDate] }).onDelete('cascade'),
+    check('report_risky_sign_in_flag_request_id_present', present(sql`${t.requestId}`)),
+    check(
+      'report_risky_sign_in_flag_observed_meets_trigger',
+      meetsTrigger(sql`${t.observedRiskLevel}`, sql`${t.triggerLevel}`),
+    ),
+    check(
+      'report_risky_sign_in_flag_signed_in_within_day',
+      sql`${t.signedInAt} >= (${t.reportDate}::timestamp AT TIME ZONE 'UTC') AND ${t.signedInAt} < ((${t.reportDate} + 1)::timestamp AT TIME ZONE 'UTC')`,
+    ),
+    check(
+      'report_risky_sign_in_flag_blank_is_not_recorded',
+      recordedOrNull(
+        sql`${t.userId}`,
+        sql`${t.userPrincipalName}`,
+        sql`${t.appId}`,
+        sql`${t.appDisplayName}`,
+        sql`${t.location}`,
+      ),
+    ),
+    check(
+      'report_risky_sign_in_flag_conditional_access_known',
+      sql`${t.conditionalAccessStatus} IN ('success', 'failure', 'notApplied', 'unknownFutureValue')`,
+    ),
+  ],
+)
+
+/* One row per user flagged in a published report, with every contributing risk detection and the IDs of the
+ * user's sign-ins in the window. Immutable and reconciled to risky_users like the sign-in flags. */
+export const reportRiskyUserFlags = pgTable(
+  'report_risky_user_flag',
+  {
+    reportDate: date('report_date', { mode: 'string' }).notNull(),
+    userId: text('user_id').notNull(),
+    userPrincipalName: text('user_principal_name'),
+    userDisplayName: text('user_display_name'),
+    triggerLevel: text('trigger_level').$type<RiskTriggerLevel>().notNull(),
+    riskState: text('risk_state').$type<FlaggedRiskState>().notNull(),
+    riskLevel: text('risk_level').$type<RiskTriggerLevel>().notNull(),
+    detections: jsonb('detections').$type<RiskDetectionEvidence[]>().notNull(),
+    signInIds: text('sign_in_ids').array().notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.reportDate, t.userId] }),
+    foreignKey({ columns: [t.reportDate], foreignColumns: [reports.reportDate] }).onDelete('cascade'),
+    check('report_risky_user_flag_user_id_present', present(sql`${t.userId}`)),
+    check('report_risky_user_flag_state_flagged', sql`${t.riskState} IN ('atRisk', 'confirmedCompromised')`),
+    check('report_risky_user_flag_level_meets_trigger', meetsTrigger(sql`${t.riskLevel}`, sql`${t.triggerLevel}`)),
+    check(
+      'report_risky_user_flag_detections_complete',
+      sql`jsonb_typeof(${t.detections}) = 'array' AND NOT jsonb_path_exists(${t.detections}, 'strict $[*] ? (@.type() != "object")') AND NOT jsonb_path_exists(${t.detections}, '$[*] ? (!(@.id.type() == "string" && @.riskEventType.type() == "string" && @.detectedDateTime.type() == "string" && @.id like_regex "\\\\S" && @.riskEventType like_regex "\\\\S" && (@.riskLevel == "none" || @.riskLevel == "low" || @.riskLevel == "medium" || @.riskLevel == "high" || @.riskLevel == "hidden" || @.riskLevel == "unknownFutureValue") && @.detectedDateTime like_regex "^\\\\d{4}-\\\\d{2}-\\\\d{2}T\\\\d{2}:\\\\d{2}:\\\\d{2}"))')`,
+    ),
+    check(
+      'report_risky_user_flag_sign_in_ids_present',
+      sql`NOT jsonb_path_exists(to_jsonb(${t.signInIds}), '$[*] ? (@ == null || !(@ like_regex "\\\\S"))')`,
+    ),
+    check(
+      'report_risky_user_flag_blank_is_not_recorded',
+      recordedOrNull(sql`${t.userPrincipalName}`, sql`${t.userDisplayName}`),
+    ),
+    index('report_risky_user_flag_user_id_idx').on(t.userId),
   ],
 )

@@ -13,6 +13,8 @@ describe('report schema (ST-2)', () => {
         'missing_sources',
         'published_at',
         'report_date',
+        'risky_sign_ins',
+        'risky_users',
         'snapshot',
         'status',
         'successful',
@@ -22,7 +24,8 @@ describe('report schema (ST-2)', () => {
       ].sort(),
     )
     expect(config.columns.filter((c) => c.primary).map((c) => c.name)).toEqual(['report_date'])
-    expect(config.columns.every((c) => c.notNull)).toBe(true)
+    /* Only the ST-9 risk counts may be NULL: not evaluated. */
+    expect(config.columns.filter((c) => !c.notNull).map((c) => c.name)).toEqual(['risky_sign_ins', 'risky_users'])
   })
 
   it('guards the window, the outcome, the figures and the hash with CHECK constraints', () => {
@@ -36,6 +39,10 @@ describe('report schema (ST-2)', () => {
         'report_counts_non_negative',
         'report_missing_sources_known',
         'report_published_after_window',
+        'report_risky_counts_evaluated_together',
+        'report_risky_counts_non_negative',
+        'report_risky_not_evaluated_without_identity_protection',
+        'report_risky_snapshot_holds_risk_data',
         'report_status_known',
         'report_status_matches_missing_sources',
         'report_total_is_successful_plus_failed',
@@ -55,13 +62,14 @@ describe('report schema (ST-2)', () => {
     ])
   })
 
-  it('names the four sign-in sources and Identity Protection, and the two published statuses', () => {
+  it('names the four sign-in sources and the two Identity Protection collections, and the two published statuses', () => {
     expect(REPORT_SOURCES).toEqual([
       'signIns.interactiveUser',
       'signIns.nonInteractiveUser',
       'signIns.servicePrincipal',
       'signIns.managedIdentity',
       'identityProtection.riskDetections',
+      'identityProtection.riskyUsers',
     ])
     expect(REPORT_STATUSES).toEqual(['complete', 'incomplete'])
   })
