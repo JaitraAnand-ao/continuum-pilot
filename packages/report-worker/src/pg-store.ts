@@ -1,3 +1,4 @@
+import type { DailyFigures } from './figures.js'
 import type { NotGeneratedDay, PublishedReport, RiskDetection, SignIn, SourceId } from './model.js'
 import type { PublishResult, ReportStore } from './ports.js'
 
@@ -47,7 +48,7 @@ export class PgReportStore implements ReportStore {
     const { rows } = await this.db.executeSql(SELECT_REPORT, [reportDate])
     const row = rows[0]
     if (!row) return undefined
-    const snapshot = row.snapshot as { signIns: SignIn[]; riskDetections: RiskDetection[] }
+    const snapshot = row.snapshot as { signIns: SignIn[]; riskDetections: RiskDetection[]; figures: DailyFigures }
     return {
       reportDate: row.report_date as string,
       windowStart: row.window_start as string,
@@ -55,6 +56,7 @@ export class PgReportStore implements ReportStore {
       status: row.status as PublishedReport['status'],
       missingSources: row.missing_sources as SourceId[],
       totals: { total: row.total as number, successful: row.successful as number, failed: row.failed as number },
+      figures: snapshot.figures,
       signIns: snapshot.signIns,
       riskDetections: snapshot.riskDetections,
       contentHash: row.content_hash as string,
@@ -72,7 +74,7 @@ export class PgReportStore implements ReportStore {
       report.totals.total,
       report.totals.successful,
       report.totals.failed,
-      JSON.stringify({ signIns: report.signIns, riskDetections: report.riskDetections }),
+      JSON.stringify({ signIns: report.signIns, riskDetections: report.riskDetections, figures: report.figures }),
       report.contentHash,
       report.publishedAt,
     ])

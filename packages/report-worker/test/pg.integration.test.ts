@@ -3,6 +3,7 @@ import PgBoss from 'pg-boss'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import {
   contentHash,
+  figuresOf,
   generateReport,
   PgReportStore,
   QUEUE_CHECK,
@@ -102,6 +103,42 @@ describe.skipIf(!databaseUrl)('report worker on real Postgres', () => {
     expect(rows[0]).toEqual({ n: 1, hash: first.report.contentHash })
   })
 
+  it('stores the Daily report figures with the snapshot and reads them back byte-identical (ST-3 AC-1 to AC-5, AC-10)', async () => {
+    const graph = new FakeGraph([
+      signIn({ id: 'x1', createdDateTime: '2026-10-09T00:00:00.000Z', errorCode: 50126 }),
+      signIn({ id: 'x2', createdDateTime: '2026-10-09T23:59:59.999Z', appId: 'app-wd', appDisplayName: 'Workday' }),
+      signIn({
+        id: 'x3',
+        signInEventType: 'servicePrincipal',
+        createdDateTime: '2026-10-09T12:00:00.000Z',
+        errorCode: 53003,
+      }),
+      signIn({ id: 'x4', createdDateTime: '2026-10-10T00:00:00.000Z', errorCode: 50053 }),
+    ])
+    const clock = new FakeClock('2026-10-10T02:00:00.000Z')
+    const published = await generateReport('2026-10-09', { graph, store, metrics: new RecordingMetrics(), clock })
+    if (published.kind !== 'published') throw new Error(`expected published, got ${published.kind}`)
+
+    const stored = await store.findReport('2026-10-09')
+    expect(stored!.figures).toEqual(figuresOf(published.report.signIns))
+    expect(stored!.figures.all.totals).toEqual({ total: 3, successful: 1, failed: 2 })
+    expect(stored!.figures.managedIdentity.totals).toEqual({ total: 0, successful: 0, failed: 0 })
+    expect(contentHash(snapshotHashInput(stored!))).toBe(published.report.contentHash)
+
+    const { rows } = await boss
+      .getDb()
+      .executeSql(`SELECT snapshot -> 'figures' AS figures FROM report WHERE report_date = $1`, ['2026-10-09'])
+    expect(canonicalJson(rows[0]!.figures)).toBe(canonicalJson(published.report.figures))
+    const reread = await store.findReport('2026-10-09')
+    expect(JSON.stringify(reread!.figures)).toBe(JSON.stringify(stored!.figures))
+    expect(reread!.contentHash).toBe(published.report.contentHash)
+
+    const late = new FakeGraph([signIn({ id: 'late', createdDateTime: '2026-10-09T18:00:00.000Z' })])
+    clock.set('2026-10-10T09:00:00.000Z')
+    await generateReport('2026-10-09', { graph: late, store, metrics: new RecordingMetrics(), clock })
+    expect((await store.findReport('2026-10-09'))!.figures).toEqual(stored!.figures)
+  })
+
   it('records a not-generated day and returns nothing for an unknown day (AC-5)', async () => {
     const graph = new FakeGraph()
     graph.failRisk = 'always'
@@ -166,4 +203,14 @@ async function waitForCompletion(boss: PgBoss, queue: string, ids: (string | nul
     await new Promise((resolve) => setTimeout(resolve, 200))
   }
   throw new Error(`${queue} jobs did not complete`)
+}
+
+/* Key-sorted JSON: jsonb reorders object keys, so byte-identity is compared on the canonical form. */
+function canonicalJson(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(',')}]`
+  if (value !== null && typeof value === 'object') {
+    const keys = Object.keys(value).sort()
+    return `{${keys.map((k) => `${JSON.stringify(k)}:${canonicalJson((value as Record<string, unknown>)[k])}`).join(',')}}`
+  }
+  return JSON.stringify(value)
 }

@@ -1,4 +1,5 @@
 import { collectPages } from './collect.js'
+import { figuresOf } from './figures.js'
 import { SIGN_IN_TYPES, type PublishedReport, type RiskDetection, type SignIn, type SourceId } from './model.js'
 import { METRIC_NAMESPACE, type Clock, type GraphReadPort, type MetricsPort, type ReportStore } from './ports.js'
 import { contentHash, snapshotHashInput, totalsOf } from './snapshot.js'
@@ -55,6 +56,7 @@ export async function generateReport(reportDate: string, deps: GenerateDeps): Pr
     status: missingSources.length === 0 ? ('complete' as const) : ('incomplete' as const),
     missingSources,
     totals: totalsOf(signIns),
+    figures: figuresOf(signIns),
     signIns,
     riskDetections,
   }

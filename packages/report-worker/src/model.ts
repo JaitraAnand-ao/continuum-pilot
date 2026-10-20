@@ -1,3 +1,5 @@
+import type { DailyFigures } from './figures.js'
+
 /* The shapes the report job reads from Graph (through the IF-13 port) and stores (through the IF-14 port). */
 
 export const SIGN_IN_TYPES = ['interactiveUser', 'nonInteractiveUser', 'servicePrincipal', 'managedIdentity'] as const
@@ -24,6 +26,9 @@ export interface SignIn {
   signInEventType: SignInType
   /* 0 is a successful sign-in; any other code is a failure. */
   errorCode: number
+  /* The application signed in to, for the per-application table (ST-3 AC-2). */
+  appId: string
+  appDisplayName: string
   conditionalAccessPolicies: readonly ConditionalAccessPolicyResult[]
   deviceDetail: DeviceDetail
 }
@@ -72,6 +77,8 @@ export interface PublishedReport {
   status: 'complete' | 'incomplete'
   missingSources: SourceId[]
   totals: Totals
+  /* The Daily report figures (IF-18), computed from signIns before publish and covered by contentHash. */
+  figures: DailyFigures
   signIns: SignIn[]
   riskDetections: RiskDetection[]
   contentHash: string
