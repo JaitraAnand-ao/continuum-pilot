@@ -1,5 +1,5 @@
 /* CMP-2 BFF for ST-1: sign-in with PKCE, state and nonce (IF-1, IF-2), sign-out (IF-3), the current account (IF-4)
- * and the role gate every /api route passes. Tokens stay here; the browser only ever holds __Host-sr_session (AD-5). */
+ * and the role gate every /api route passes; for ST-7 the report history (IF-27). Tokens stay here; the browser only ever holds __Host-sr_session (AD-5). */
 import { randomBytes, timingSafeEqual } from 'node:crypto'
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from 'fastify'
 import type { AuditLog } from './audit.js'
@@ -9,6 +9,8 @@ import type { Clock } from './clock.js'
 import type { Config } from './config.js'
 import { clearCookie, LOGIN_COOKIE, readCookie, serializeCookie, SESSION_COOKIE } from './http/cookies.js'
 import { problemSchema, sendProblem } from './http/problem.js'
+import { registerReportHistory } from './history/route.js'
+import type { ReportHistoryStore } from './history/store.js'
 import { deriveKeys, pkceChallenge, randomToken, seal, unseal } from './security/crypto.js'
 import {
   ABSOLUTE_TIMEOUT_MS,
@@ -39,6 +41,7 @@ export interface AppDeps {
   sessions: SessionStore
   audit: AuditLog
   oidc: OidcClient
+  reportHistory: ReportHistoryStore
 }
 
 interface LoginTransaction {
@@ -288,6 +291,8 @@ export function buildApp(deps: AppDeps): FastifyInstance {
       }
     },
   )
+
+  registerReportHistory(app, { clock, store: deps.reportHistory })
 
   return app
 }

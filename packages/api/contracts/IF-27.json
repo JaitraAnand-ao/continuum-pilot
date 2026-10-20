@@ -1,0 +1,123 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Entra Sign-In Reports BFF - report history",
+    "version": "1.0.0",
+    "description": "IF-27, provided by ST-7 (CMP-2). The last 90 UTC days, one item per day including days with no report. ST-6 uses it for the date picker's available days; ST-13 fills flagCount and ST-21 fills emailedAt, both nullable from the start."
+  },
+  "paths": {
+    "/api/v1/report-history": {
+      "get": {
+        "operationId": "getReportHistory",
+        "summary": "Each of the last 90 days with status and counts",
+        "security": [{ "sessionCookie": [] }],
+        "parameters": [
+          {
+            "name": "month",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "string", "pattern": "^\\d{4}-(0[1-9]|1[0-2])$" },
+            "description": "Limit to one UTC month, YYYY-MM."
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "string", "enum": ["available", "generated_late", "not_generated"] }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Days, newest first.",
+            "headers": { "Cache-Control": { "schema": { "type": "string", "const": "no-store" } } },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["items", "totalDays", "firstReportDueAt"],
+                  "properties": {
+                    "totalDays": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 90,
+                      "description": "Days in the 90-day range before filtering."
+                    },
+                    "firstReportDueAt": {
+                      "type": ["string", "null"],
+                      "format": "date-time",
+                      "description": "Set only before any report exists: when the first one is due."
+                    },
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "required": [
+                          "reportDate",
+                          "status",
+                          "generatedAt",
+                          "signIns",
+                          "failed",
+                          "flagCount",
+                          "emailedAt"
+                        ],
+                        "properties": {
+                          "reportDate": { "type": "string", "format": "date" },
+                          "status": { "type": "string", "enum": ["available", "generated_late", "not_generated"] },
+                          "generatedAt": { "type": ["string", "null"], "format": "date-time" },
+                          "signIns": { "type": ["integer", "null"], "minimum": 0 },
+                          "failed": { "type": ["integer", "null"], "minimum": 0 },
+                          "flagCount": { "type": ["integer", "null"], "minimum": 0 },
+                          "emailedAt": {
+                            "type": ["string", "null"],
+                            "format": "date-time",
+                            "description": "null means not sent."
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "month or status is invalid.",
+            "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/Problem" } } }
+          },
+          "401": {
+            "description": "No session.",
+            "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/Problem" } } }
+          },
+          "403": {
+            "description": "The session lacks the reader role.",
+            "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/Problem" } } }
+          },
+          "503": {
+            "description": "The report store did not respond.",
+            "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/Problem" } } }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "sessionCookie": { "type": "apiKey", "in": "cookie", "name": "__Host-sr_session" }
+    },
+    "schemas": {
+      "Problem": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["type", "title", "status", "traceId"],
+        "properties": {
+          "type": { "type": "string", "format": "uri-reference" },
+          "title": { "type": "string" },
+          "status": { "type": "integer" },
+          "traceId": { "type": "string", "pattern": "^[0-9a-f]{32}$" }
+        }
+      }
+    }
+  }
+}
