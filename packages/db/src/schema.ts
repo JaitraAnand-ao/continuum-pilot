@@ -1,13 +1,15 @@
-import { sql } from 'drizzle-orm'
+import { relations, sql } from 'drizzle-orm'
 import {
   bigint,
   check,
   customType,
   date,
+  foreignKey,
   index,
   integer,
   jsonb,
   pgTable,
+  primaryKey,
   text,
   timestamp,
   uuid,
@@ -144,3 +146,117 @@ export const reportNotGenerated = pgTable(
     check('report_not_generated_missing_sources_known', sql`${t.missingSources} <@ ${KNOWN_SOURCES}`),
   ],
 )
+
+/* ST-3: the Daily report's sign-in type control. 'all' is All types; the others are Graph's signInEventType. */
+export const SIGN_IN_SCOPES = [
+  'all',
+  'interactiveUser',
+  'nonInteractiveUser',
+  'servicePrincipal',
+  'managedIdentity',
+] as const
+export type SignInScope = (typeof SIGN_IN_SCOPES)[number]
+
+/* The figures the Daily report shows, computed from the snapshot by the report worker and written in the publish
+ * transaction, so a view reads them as published and never recomputes them. Per report there is one row for All
+ * types and one for each sign-in type, zeros included. A deferred constraint trigger (migration 0005) checks at
+ * commit that All types equals the report row, the four types add up to All types, and each type's applications
+ * and error codes add up to its tiles; UPDATE and TRUNCATE are rejected. Purging the report removes its figures. */
+export const reportFigures = pgTable(
+  'report_figures',
+  {
+    reportDate: date('report_date', { mode: 'string' })
+      .notNull()
+      .references(() => reports.reportDate, { onDelete: 'cascade' }),
+    signInType: text('sign_in_type').$type<SignInScope>().notNull(),
+    total: integer('total').notNull(),
+    successful: integer('successful').notNull(),
+    failed: integer('failed').notNull(),
+    errorCodeCount: integer('error_code_count').notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.reportDate, t.signInType] }),
+    check(
+      'report_figures_sign_in_type_known',
+      sql`${t.signInType} IN ('all', 'interactiveUser', 'nonInteractiveUser', 'servicePrincipal', 'managedIdentity')`,
+    ),
+    check('report_figures_counts_non_negative', sql`${t.successful} >= 0 AND ${t.failed} >= 0`),
+    check('report_figures_total_is_successful_plus_failed', sql`${t.total} = ${t.successful} + ${t.failed}`),
+    check(
+      'report_figures_error_codes_within_failed',
+      sql`${t.errorCodeCount} <= ${t.failed} AND (${t.failed} = 0) = (${t.errorCodeCount} = 0)`,
+    ),
+  ],
+)
+
+/* One row per application with at least one sign-in of the type that day. */
+export const reportApplicationFigures = pgTable(
+  'report_application_figures',
+  {
+    reportDate: date('report_date', { mode: 'string' }).notNull(),
+    signInType: text('sign_in_type').$type<SignInScope>().notNull(),
+    appId: text('app_id').notNull(),
+    appDisplayName: text('app_display_name').notNull(),
+    total: integer('total').notNull(),
+    successful: integer('successful').notNull(),
+    failed: integer('failed').notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.reportDate, t.signInType, t.appId] }),
+    foreignKey({
+      columns: [t.reportDate, t.signInType],
+      foreignColumns: [reportFigures.reportDate, reportFigures.signInType],
+      name: 'report_application_figures_scope_fk',
+    }).onDelete('cascade'),
+    check('report_application_figures_counts_non_negative', sql`${t.successful} >= 0 AND ${t.failed} >= 0`),
+    check(
+      'report_application_figures_total_is_successful_plus_failed',
+      sql`${t.total} = ${t.successful} + ${t.failed}`,
+    ),
+    check('report_application_figures_has_sign_ins', sql`${t.total} > 0`),
+  ],
+)
+
+/* One row per non-zero error code the type's failed sign-ins carried that day. */
+export const reportErrorCodeFigures = pgTable(
+  'report_error_code_figures',
+  {
+    reportDate: date('report_date', { mode: 'string' }).notNull(),
+    signInType: text('sign_in_type').$type<SignInScope>().notNull(),
+    errorCode: integer('error_code').notNull(),
+    failed: integer('failed').notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.reportDate, t.signInType, t.errorCode] }),
+    foreignKey({
+      columns: [t.reportDate, t.signInType],
+      foreignColumns: [reportFigures.reportDate, reportFigures.signInType],
+      name: 'report_error_code_figures_scope_fk',
+    }).onDelete('cascade'),
+    check('report_error_code_figures_code_is_failure', sql`${t.errorCode} <> 0`),
+    check('report_error_code_figures_has_failures', sql`${t.failed} > 0`),
+  ],
+)
+
+/* How the reader loads a report with its figures in one statement, and so from one snapshot. */
+export const reportRelations = relations(reports, ({ many }) => ({ figures: many(reportFigures) }))
+
+export const reportFiguresRelations = relations(reportFigures, ({ one, many }) => ({
+  report: one(reports, { fields: [reportFigures.reportDate], references: [reports.reportDate] }),
+  applications: many(reportApplicationFigures),
+  errorCodes: many(reportErrorCodeFigures),
+}))
+
+export const reportApplicationFiguresRelations = relations(reportApplicationFigures, ({ one }) => ({
+  scope: one(reportFigures, {
+    fields: [reportApplicationFigures.reportDate, reportApplicationFigures.signInType],
+    references: [reportFigures.reportDate, reportFigures.signInType],
+  }),
+}))
+
+export const reportErrorCodeFiguresRelations = relations(reportErrorCodeFigures, ({ one }) => ({
+  scope: one(reportFigures, {
+    fields: [reportErrorCodeFigures.reportDate, reportErrorCodeFigures.signInType],
+    references: [reportFigures.reportDate, reportFigures.signInType],
+  }),
+}))
