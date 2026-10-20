@@ -137,7 +137,8 @@ describe.skipIf(noDatabase)('report storage (ST-2)', () => {
     })
 
     it('rejects TRUNCATE of the reports', async () => {
-      expect(await asOwner((c) => sqlState(() => c.query('TRUNCATE report')))).toBe(RAISE_EXCEPTION)
+      /* By the immutability trigger, or first by the ST-9 risk flags' foreign keys (0A000). */
+      expect([RAISE_EXCEPTION, '0A000']).toContain(await asOwner((c) => sqlState(() => c.query('TRUNCATE report'))))
     })
   })
 

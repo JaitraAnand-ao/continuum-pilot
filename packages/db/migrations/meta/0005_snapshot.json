@@ -1,0 +1,748 @@
+{
+  "id": "34b4b9ae-0549-4edf-bdf8-0bcc37deaa42",
+  "prevId": "a002f93d-c912-4ca7-ae8d-87ff45ca8e9f",
+  "version": "7",
+  "dialect": "postgresql",
+  "tables": {
+    "public.audit_events": {
+      "name": "audit_events",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "bigint",
+          "primaryKey": true,
+          "notNull": true,
+          "identity": {
+            "name": "audit_events_id_seq",
+            "increment": "1",
+            "minValue": "1",
+            "maxValue": "9223372036854775807",
+            "startWith": "1",
+            "cache": "1",
+            "cycle": false,
+            "schema": "public",
+            "type": "always"
+          }
+        },
+        "occurred_at": {
+          "name": "occurred_at",
+          "type": "timestamp (3) with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "event_type": {
+          "name": "event_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "actor_oid": {
+          "name": "actor_oid",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "actor_name": {
+          "name": "actor_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "target": {
+          "name": "target",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "trace_id": {
+          "name": "trace_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "prev_hash": {
+          "name": "prev_hash",
+          "type": "bytea",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "hash": {
+          "name": "hash",
+          "type": "bytea",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {
+        "audit_events_occurred_at_idx": {
+          "name": "audit_events_occurred_at_idx",
+          "columns": [
+            {
+              "expression": "occurred_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "with": {},
+          "method": "btree",
+          "concurrently": false
+        },
+        "audit_events_actor_oid_idx": {
+          "name": "audit_events_actor_oid_idx",
+          "columns": [
+            {
+              "expression": "actor_oid",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "with": {},
+          "method": "btree",
+          "concurrently": false
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "audit_events_event_type_known": {
+          "name": "audit_events_event_type_known",
+          "value": "\"audit_events\".\"event_type\" IN ('access_denied')"
+        },
+        "audit_events_trace_id_w3c": {
+          "name": "audit_events_trace_id_w3c",
+          "value": "\"audit_events\".\"trace_id\" ~ '^[0-9a-f]{32}$'"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.report_not_generated": {
+      "name": "report_not_generated",
+      "schema": "",
+      "columns": {
+        "report_date": {
+          "name": "report_date",
+          "type": "date",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "missing_sources": {
+          "name": "missing_sources",
+          "type": "text[]",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "recorded_at": {
+          "name": "recorded_at",
+          "type": "timestamp (3) with time zone",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "report_not_generated_missing_sources_present": {
+          "name": "report_not_generated_missing_sources_present",
+          "value": "cardinality(\"report_not_generated\".\"missing_sources\") > 0"
+        },
+        "report_not_generated_missing_sources_known": {
+          "name": "report_not_generated_missing_sources_known",
+          "value": "\"report_not_generated\".\"missing_sources\" <@ ARRAY['signIns.interactiveUser', 'signIns.nonInteractiveUser', 'signIns.servicePrincipal', 'signIns.managedIdentity', 'identityProtection.riskDetections', 'identityProtection.riskyUsers']::text[]"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.report_risky_sign_in_flag": {
+      "name": "report_risky_sign_in_flag",
+      "schema": "",
+      "columns": {
+        "report_date": {
+          "name": "report_date",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "request_id": {
+          "name": "request_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "trigger_level": {
+          "name": "trigger_level",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "observed_risk_level": {
+          "name": "observed_risk_level",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "signed_in_at": {
+          "name": "signed_in_at",
+          "type": "timestamp (3) with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "user_principal_name": {
+          "name": "user_principal_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "app_id": {
+          "name": "app_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "app_display_name": {
+          "name": "app_display_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "ip_address": {
+          "name": "ip_address",
+          "type": "inet",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "location": {
+          "name": "location",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "device_compliant": {
+          "name": "device_compliant",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "conditional_access_status": {
+          "name": "conditional_access_status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "report_risky_sign_in_flag_report_date_report_report_date_fk": {
+          "name": "report_risky_sign_in_flag_report_date_report_report_date_fk",
+          "tableFrom": "report_risky_sign_in_flag",
+          "columnsFrom": [
+            "report_date"
+          ],
+          "tableTo": "report",
+          "columnsTo": [
+            "report_date"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "cascade"
+        }
+      },
+      "compositePrimaryKeys": {
+        "report_risky_sign_in_flag_report_date_request_id_pk": {
+          "name": "report_risky_sign_in_flag_report_date_request_id_pk",
+          "columns": [
+            "report_date",
+            "request_id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "report_risky_sign_in_flag_request_id_present": {
+          "name": "report_risky_sign_in_flag_request_id_present",
+          "value": "\"report_risky_sign_in_flag\".\"request_id\" ~ '[^[:space:]]'"
+        },
+        "report_risky_sign_in_flag_observed_meets_trigger": {
+          "name": "report_risky_sign_in_flag_observed_meets_trigger",
+          "value": "(CASE \"report_risky_sign_in_flag\".\"observed_risk_level\" WHEN 'medium' THEN 2 WHEN 'high' THEN 3 END) IS NOT NULL AND (CASE \"report_risky_sign_in_flag\".\"trigger_level\" WHEN 'medium' THEN 2 WHEN 'high' THEN 3 END) IS NOT NULL AND (CASE \"report_risky_sign_in_flag\".\"observed_risk_level\" WHEN 'medium' THEN 2 WHEN 'high' THEN 3 END) >= (CASE \"report_risky_sign_in_flag\".\"trigger_level\" WHEN 'medium' THEN 2 WHEN 'high' THEN 3 END)"
+        },
+        "report_risky_sign_in_flag_signed_in_within_day": {
+          "name": "report_risky_sign_in_flag_signed_in_within_day",
+          "value": "\"report_risky_sign_in_flag\".\"signed_in_at\" >= (\"report_risky_sign_in_flag\".\"report_date\"::timestamp AT TIME ZONE 'UTC') AND \"report_risky_sign_in_flag\".\"signed_in_at\" < ((\"report_risky_sign_in_flag\".\"report_date\" + 1)::timestamp AT TIME ZONE 'UTC')"
+        },
+        "report_risky_sign_in_flag_blank_is_not_recorded": {
+          "name": "report_risky_sign_in_flag_blank_is_not_recorded",
+          "value": "\"report_risky_sign_in_flag\".\"user_id\" ~ '[^[:space:]]' AND \"report_risky_sign_in_flag\".\"user_principal_name\" ~ '[^[:space:]]' AND \"report_risky_sign_in_flag\".\"app_id\" ~ '[^[:space:]]' AND \"report_risky_sign_in_flag\".\"app_display_name\" ~ '[^[:space:]]' AND \"report_risky_sign_in_flag\".\"location\" ~ '[^[:space:]]'"
+        },
+        "report_risky_sign_in_flag_conditional_access_known": {
+          "name": "report_risky_sign_in_flag_conditional_access_known",
+          "value": "\"report_risky_sign_in_flag\".\"conditional_access_status\" IN ('success', 'failure', 'notApplied', 'unknownFutureValue')"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.report_risky_user_flag": {
+      "name": "report_risky_user_flag",
+      "schema": "",
+      "columns": {
+        "report_date": {
+          "name": "report_date",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "user_principal_name": {
+          "name": "user_principal_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "user_display_name": {
+          "name": "user_display_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "trigger_level": {
+          "name": "trigger_level",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "risk_state": {
+          "name": "risk_state",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "risk_level": {
+          "name": "risk_level",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "detections": {
+          "name": "detections",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "sign_in_ids": {
+          "name": "sign_in_ids",
+          "type": "text[]",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {
+        "report_risky_user_flag_user_id_idx": {
+          "name": "report_risky_user_flag_user_id_idx",
+          "columns": [
+            {
+              "expression": "user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "with": {},
+          "method": "btree",
+          "concurrently": false
+        }
+      },
+      "foreignKeys": {
+        "report_risky_user_flag_report_date_report_report_date_fk": {
+          "name": "report_risky_user_flag_report_date_report_report_date_fk",
+          "tableFrom": "report_risky_user_flag",
+          "columnsFrom": [
+            "report_date"
+          ],
+          "tableTo": "report",
+          "columnsTo": [
+            "report_date"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "cascade"
+        }
+      },
+      "compositePrimaryKeys": {
+        "report_risky_user_flag_report_date_user_id_pk": {
+          "name": "report_risky_user_flag_report_date_user_id_pk",
+          "columns": [
+            "report_date",
+            "user_id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "report_risky_user_flag_user_id_present": {
+          "name": "report_risky_user_flag_user_id_present",
+          "value": "\"report_risky_user_flag\".\"user_id\" ~ '[^[:space:]]'"
+        },
+        "report_risky_user_flag_state_flagged": {
+          "name": "report_risky_user_flag_state_flagged",
+          "value": "\"report_risky_user_flag\".\"risk_state\" IN ('atRisk', 'confirmedCompromised')"
+        },
+        "report_risky_user_flag_level_meets_trigger": {
+          "name": "report_risky_user_flag_level_meets_trigger",
+          "value": "(CASE \"report_risky_user_flag\".\"risk_level\" WHEN 'medium' THEN 2 WHEN 'high' THEN 3 END) IS NOT NULL AND (CASE \"report_risky_user_flag\".\"trigger_level\" WHEN 'medium' THEN 2 WHEN 'high' THEN 3 END) IS NOT NULL AND (CASE \"report_risky_user_flag\".\"risk_level\" WHEN 'medium' THEN 2 WHEN 'high' THEN 3 END) >= (CASE \"report_risky_user_flag\".\"trigger_level\" WHEN 'medium' THEN 2 WHEN 'high' THEN 3 END)"
+        },
+        "report_risky_user_flag_detections_complete": {
+          "name": "report_risky_user_flag_detections_complete",
+          "value": "jsonb_typeof(\"report_risky_user_flag\".\"detections\") = 'array' AND NOT jsonb_path_exists(\"report_risky_user_flag\".\"detections\", 'strict $[*] ? (@.type() != \"object\")') AND NOT jsonb_path_exists(\"report_risky_user_flag\".\"detections\", '$[*] ? (!(@.id.type() == \"string\" && @.riskEventType.type() == \"string\" && @.detectedDateTime.type() == \"string\" && @.id like_regex \"\\\\S\" && @.riskEventType like_regex \"\\\\S\" && (@.riskLevel == \"none\" || @.riskLevel == \"low\" || @.riskLevel == \"medium\" || @.riskLevel == \"high\" || @.riskLevel == \"hidden\" || @.riskLevel == \"unknownFutureValue\") && @.detectedDateTime like_regex \"^\\\\d{4}-\\\\d{2}-\\\\d{2}T\\\\d{2}:\\\\d{2}:\\\\d{2}\"))')"
+        },
+        "report_risky_user_flag_sign_in_ids_present": {
+          "name": "report_risky_user_flag_sign_in_ids_present",
+          "value": "NOT jsonb_path_exists(to_jsonb(\"report_risky_user_flag\".\"sign_in_ids\"), '$[*] ? (@ == null || !(@ like_regex \"\\\\S\"))')"
+        },
+        "report_risky_user_flag_blank_is_not_recorded": {
+          "name": "report_risky_user_flag_blank_is_not_recorded",
+          "value": "\"report_risky_user_flag\".\"user_principal_name\" ~ '[^[:space:]]' AND \"report_risky_user_flag\".\"user_display_name\" ~ '[^[:space:]]'"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.report": {
+      "name": "report",
+      "schema": "",
+      "columns": {
+        "report_date": {
+          "name": "report_date",
+          "type": "date",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "window_start": {
+          "name": "window_start",
+          "type": "timestamp (3) with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "window_end": {
+          "name": "window_end",
+          "type": "timestamp (3) with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "missing_sources": {
+          "name": "missing_sources",
+          "type": "text[]",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "total": {
+          "name": "total",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "successful": {
+          "name": "successful",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "failed": {
+          "name": "failed",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "risky_sign_ins": {
+          "name": "risky_sign_ins",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "risky_users": {
+          "name": "risky_users",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "snapshot": {
+          "name": "snapshot",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "content_hash": {
+          "name": "content_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "published_at": {
+          "name": "published_at",
+          "type": "timestamp (3) with time zone",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {
+        "report_published_at_idx": {
+          "name": "report_published_at_idx",
+          "columns": [
+            {
+              "expression": "published_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "with": {},
+          "method": "btree",
+          "concurrently": false
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "report_window_is_utc_day": {
+          "name": "report_window_is_utc_day",
+          "value": "\"report\".\"window_start\" = (\"report\".\"report_date\"::timestamp AT TIME ZONE 'UTC') AND \"report\".\"window_end\" = ((\"report\".\"report_date\" + 1)::timestamp AT TIME ZONE 'UTC')"
+        },
+        "report_published_after_window": {
+          "name": "report_published_after_window",
+          "value": "\"report\".\"published_at\" >= \"report\".\"window_end\""
+        },
+        "report_status_known": {
+          "name": "report_status_known",
+          "value": "\"report\".\"status\" IN ('complete', 'incomplete')"
+        },
+        "report_missing_sources_known": {
+          "name": "report_missing_sources_known",
+          "value": "\"report\".\"missing_sources\" <@ ARRAY['signIns.interactiveUser', 'signIns.nonInteractiveUser', 'signIns.servicePrincipal', 'signIns.managedIdentity', 'identityProtection.riskDetections', 'identityProtection.riskyUsers']::text[]"
+        },
+        "report_status_matches_missing_sources": {
+          "name": "report_status_matches_missing_sources",
+          "value": "(\"report\".\"status\" = 'complete') = (cardinality(\"report\".\"missing_sources\") = 0)"
+        },
+        "report_counts_non_negative": {
+          "name": "report_counts_non_negative",
+          "value": "\"report\".\"successful\" >= 0 AND \"report\".\"failed\" >= 0"
+        },
+        "report_total_is_successful_plus_failed": {
+          "name": "report_total_is_successful_plus_failed",
+          "value": "\"report\".\"total\" = \"report\".\"successful\" + \"report\".\"failed\""
+        },
+        "report_total_matches_snapshot": {
+          "name": "report_total_matches_snapshot",
+          "value": "CASE WHEN jsonb_typeof(\"report\".\"snapshot\" -> 'signIns') = 'array' THEN jsonb_array_length(\"report\".\"snapshot\" -> 'signIns') = \"report\".\"total\" ELSE false END"
+        },
+        "report_risky_counts_evaluated_together": {
+          "name": "report_risky_counts_evaluated_together",
+          "value": "(\"report\".\"risky_sign_ins\" IS NULL) = (\"report\".\"risky_users\" IS NULL)"
+        },
+        "report_risky_counts_non_negative": {
+          "name": "report_risky_counts_non_negative",
+          "value": "\"report\".\"risky_sign_ins\" >= 0 AND \"report\".\"risky_users\" >= 0"
+        },
+        "report_risky_not_evaluated_without_identity_protection": {
+          "name": "report_risky_not_evaluated_without_identity_protection",
+          "value": "NOT (\"report\".\"missing_sources\" && ARRAY['identityProtection.riskDetections', 'identityProtection.riskyUsers']::text[]) OR (\"report\".\"risky_sign_ins\" IS NULL AND \"report\".\"risky_users\" IS NULL)"
+        },
+        "report_risky_snapshot_holds_risk_data": {
+          "name": "report_risky_snapshot_holds_risk_data",
+          "value": "\"report\".\"risky_sign_ins\" IS NULL OR COALESCE(jsonb_typeof(\"report\".\"snapshot\" -> 'riskDetections') = 'array' AND jsonb_typeof(\"report\".\"snapshot\" -> 'riskyUsers') = 'array', false)"
+        },
+        "report_content_hash_sha256": {
+          "name": "report_content_hash_sha256",
+          "value": "\"report\".\"content_hash\" ~ '^[0-9a-f]{64}$'"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.sessions": {
+      "name": "sessions",
+      "schema": "",
+      "columns": {
+        "id_hash": {
+          "name": "id_hash",
+          "type": "bytea",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "subject_oid": {
+          "name": "subject_oid",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "account_name": {
+          "name": "account_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "roles": {
+          "name": "roles",
+          "type": "text[]",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "refresh_token_ciphertext": {
+          "name": "refresh_token_ciphertext",
+          "type": "bytea",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "refresh_token_iv": {
+          "name": "refresh_token_iv",
+          "type": "bytea",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "refresh_token_tag": {
+          "name": "refresh_token_tag",
+          "type": "bytea",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "refresh_token_key_id": {
+          "name": "refresh_token_key_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "idp_session_id": {
+          "name": "idp_session_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp (3) with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "last_seen_at": {
+          "name": "last_seen_at",
+          "type": "timestamp (3) with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "idle_expires_at": {
+          "name": "idle_expires_at",
+          "type": "timestamp (3) with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "absolute_expires_at": {
+          "name": "absolute_expires_at",
+          "type": "timestamp (3) with time zone",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {
+        "sessions_idle_expires_at_idx": {
+          "name": "sessions_idle_expires_at_idx",
+          "columns": [
+            {
+              "expression": "idle_expires_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "with": {},
+          "method": "btree",
+          "concurrently": false
+        },
+        "sessions_absolute_expires_at_idx": {
+          "name": "sessions_absolute_expires_at_idx",
+          "columns": [
+            {
+              "expression": "absolute_expires_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "with": {},
+          "method": "btree",
+          "concurrently": false
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "sessions_id_hash_sha256": {
+          "name": "sessions_id_hash_sha256",
+          "value": "octet_length(\"sessions\".\"id_hash\") = 32"
+        },
+        "sessions_refresh_token_iv_96_bit": {
+          "name": "sessions_refresh_token_iv_96_bit",
+          "value": "octet_length(\"sessions\".\"refresh_token_iv\") = 12"
+        },
+        "sessions_refresh_token_tag_128_bit": {
+          "name": "sessions_refresh_token_tag_128_bit",
+          "value": "octet_length(\"sessions\".\"refresh_token_tag\") = 16"
+        },
+        "sessions_refresh_token_present": {
+          "name": "sessions_refresh_token_present",
+          "value": "octet_length(\"sessions\".\"refresh_token_ciphertext\") > 0"
+        },
+        "sessions_idle_within_absolute": {
+          "name": "sessions_idle_within_absolute",
+          "value": "\"sessions\".\"idle_expires_at\" <= \"sessions\".\"absolute_expires_at\""
+        },
+        "sessions_absolute_after_created": {
+          "name": "sessions_absolute_after_created",
+          "value": "\"sessions\".\"absolute_expires_at\" > \"sessions\".\"created_at\""
+        }
+      },
+      "isRLSEnabled": false
+    }
+  },
+  "enums": {},
+  "schemas": {},
+  "views": {},
+  "sequences": {},
+  "roles": {},
+  "policies": {},
+  "_meta": {
+    "columns": {},
+    "schemas": {},
+    "tables": {}
+  }
+}

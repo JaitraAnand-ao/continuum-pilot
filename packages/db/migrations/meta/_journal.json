@@ -29,6 +29,20 @@
       "when": 1792460749166,
       "tag": "0003_report_immutability_and_grants",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1792495539069,
+      "tag": "0004_risk_flags",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1792495543687,
+      "tag": "0005_risk_flags_immutability_and_grants",
+      "breakpoints": true
     }
   ]
 }
