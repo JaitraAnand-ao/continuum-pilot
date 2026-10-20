@@ -15,6 +15,7 @@ export function snapshotHashInput(report: Omit<PublishedReport, 'contentHash' | 
     status: report.status,
     missingSources: report.missingSources,
     totals: report.totals,
+    figures: report.figures,
     signIns: report.signIns,
     riskDetections: report.riskDetections,
   }

@@ -44,6 +44,8 @@ export function signIn(overrides: Partial<SignIn> & { id: string }): SignIn {
     createdDateTime: '2026-10-11T12:00:00.000Z',
     signInEventType: 'interactiveUser',
     errorCode: 0,
+    appId: 'app-exchange',
+    appDisplayName: 'Exchange Online',
     conditionalAccessPolicies: [{ id: 'ca-1', displayName: 'Require MFA', result: 'success' }],
     deviceDetail: {
       deviceId: 'dev-1',
