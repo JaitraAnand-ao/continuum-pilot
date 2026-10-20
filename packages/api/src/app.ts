@@ -1,8 +1,8 @@
 /* CMP-2 BFF for ST-1: sign-in with PKCE, state and nonce (IF-1, IF-2), sign-out (IF-3), the current account (IF-4)
- * and the role gate every /api route passes; for ST-7 the report history (IF-27). Tokens stay here; the browser only ever holds __Host-sr_session (AD-5). */
+ * and the role gate every /api route passes; for ST-7 the report history (IF-27); for ST-18, the Email recipients endpoints (IF-51 to IF-56). Tokens stay here; the browser only ever holds __Host-sr_session (AD-5). */
 import { randomBytes, timingSafeEqual } from 'node:crypto'
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from 'fastify'
-import type { AuditLog } from './audit.js'
+import type { AuditLog, RecipientAuditTrail } from './audit.js'
 import { OidcUnavailableError, type OidcClient } from './auth/oidc.js'
 import { hasAnyAccess, rolesFromClaim, type Role } from './auth/roles.js'
 import type { Clock } from './clock.js'
@@ -11,6 +11,8 @@ import { clearCookie, LOGIN_COOKIE, readCookie, serializeCookie, SESSION_COOKIE 
 import { problemSchema, sendProblem } from './http/problem.js'
 import { registerReportHistory } from './history/route.js'
 import type { ReportHistoryStore } from './history/store.js'
+import type { DirectoryPort, MetricsPort, RecipientStore } from './recipients/ports.js'
+import { registerRecipientRoutes } from './recipients/routes.js'
 import { deriveKeys, pkceChallenge, randomToken, seal, unseal } from './security/crypto.js'
 import {
   ABSOLUTE_TIMEOUT_MS,
@@ -31,6 +33,8 @@ export type RequiredRole = Role | 'session' | 'none'
 declare module 'fastify' {
   interface FastifyContextConfig {
     requiredRole?: RequiredRole
+    /* The problem a caller without requiredRole reads, when the screen names the reason (ST-18 AC-9). */
+    forbidden?: { type: string; title: string }
   }
   interface FastifyRequest {
     session: SessionRecord | null
@@ -46,6 +50,10 @@ export interface AppDeps {
   reportHistory: ReportHistoryStore
   settings: DetectionSettingsStore
   tenantApps: TenantAppDirectory
+  auditTrail: RecipientAuditTrail
+  recipients: RecipientStore
+  directory: DirectoryPort
+  metrics: MetricsPort
 }
 
 interface LoginTransaction {
@@ -154,7 +162,7 @@ export function buildApp(deps: AppDeps): FastifyInstance {
     }
     if (!session.roles.includes(required)) {
       await denied(request, reply, session, 'missing-role', required)
-      return sendProblem(request, reply, 403)
+      return sendProblem(request, reply, 403, request.routeOptions.config.forbidden)
     }
   })
 
@@ -299,6 +307,8 @@ export function buildApp(deps: AppDeps): FastifyInstance {
   registerReportHistory(app, { clock, store: deps.reportHistory })
 
   registerDetectionSettings(app, { clock, audit, settings: deps.settings, tenantApps: deps.tenantApps })
+
+  registerRecipientRoutes(app, deps)
 
   return app
 }
