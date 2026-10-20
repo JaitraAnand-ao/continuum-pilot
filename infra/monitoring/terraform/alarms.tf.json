@@ -1,0 +1,60 @@
+{
+  "resource": {
+    "aws_sns_topic": {
+      "alarms": {
+        "name": "${var.name_prefix}-alarms",
+        "kms_master_key_id": "${aws_kms_key.logs.arn}"
+      }
+    },
+    "aws_cloudwatch_metric_alarm": {
+      "no_report_by_0730": {
+        "alarm_name": "${var.name_prefix}-no-report-by-0730-utc",
+        "alarm_description": "ST-2 AC-6, 'no report by 07:30 UTC': the report.check job at 07:30 UTC found no complete report for the previous UTC day.",
+        "namespace": "SigninReports",
+        "metric_name": "CompleteReportMissing",
+        "statistic": "Maximum",
+        "comparison_operator": "GreaterThanOrEqualToThreshold",
+        "threshold": 1,
+        "period": 3600,
+        "evaluation_periods": 1,
+        "datapoints_to_alarm": 1,
+        "treat_missing_data": "notBreaching",
+        "actions_enabled": true,
+        "alarm_actions": ["${aws_sns_topic.alarms.arn}"],
+        "ok_actions": ["${aws_sns_topic.alarms.arn}"]
+      },
+      "report_check_silent": {
+        "alarm_name": "${var.name_prefix}-report-check-silent",
+        "alarm_description": "ST-2 AC-6: no CompleteReportMissing datapoint for 25 hours, so the daily 07:30 UTC check did not run and a missing report could go unseen.",
+        "namespace": "SigninReports",
+        "metric_name": "CompleteReportMissing",
+        "statistic": "SampleCount",
+        "comparison_operator": "LessThanThreshold",
+        "threshold": 1,
+        "period": 3600,
+        "evaluation_periods": 25,
+        "datapoints_to_alarm": 25,
+        "treat_missing_data": "breaching",
+        "actions_enabled": true,
+        "alarm_actions": ["${aws_sns_topic.alarms.arn}"],
+        "ok_actions": ["${aws_sns_topic.alarms.arn}"]
+      },
+      "report_not_generated": {
+        "alarm_name": "${var.name_prefix}-report-not-generated",
+        "alarm_description": "ST-2 AC-5: every Graph source still failed at the 07:00 UTC retry deadline and the day was recorded as not generated.",
+        "namespace": "SigninReports",
+        "metric_name": "ReportNotGenerated",
+        "statistic": "Sum",
+        "comparison_operator": "GreaterThanOrEqualToThreshold",
+        "threshold": 1,
+        "period": 3600,
+        "evaluation_periods": 1,
+        "datapoints_to_alarm": 1,
+        "treat_missing_data": "notBreaching",
+        "actions_enabled": true,
+        "alarm_actions": ["${aws_sns_topic.alarms.arn}"],
+        "ok_actions": ["${aws_sns_topic.alarms.arn}"]
+      }
+    }
+  }
+}

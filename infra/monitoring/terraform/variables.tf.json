@@ -1,0 +1,40 @@
+{
+  "variable": {
+    "region": {
+      "type": "string",
+      "description": "AWS region; GovCloud (us-gov-west-1, us-gov-east-1) and commercial regions are both valid.",
+      "validation": [
+        {
+          "condition": "${can(regex(\"^(us-gov-(west|east)-1|[a-z]{2}(-[a-z]+)+-[0-9])$\", var.region))}",
+          "error_message": "region must be an AWS region name such as us-gov-west-1."
+        }
+      ]
+    },
+    "name_prefix": {
+      "type": "string",
+      "default": "signin-reports",
+      "description": "Prefix for alarm, topic and log group names.",
+      "validation": [
+        {
+          "condition": "${can(regex(\"^[a-z][a-z0-9-]{1,18}$\", var.name_prefix))}",
+          "error_message": "name_prefix must be 2-19 lower-case letters, digits or hyphens."
+        }
+      ]
+    },
+    "report_worker_log_retention_days": {
+      "type": "number",
+      "default": 90,
+      "description": "Retention of the report-worker application log group."
+    },
+    "protected_role_names": {
+      "type": "list(string)",
+      "description": "IAM roles (operators, CI deploy role) that receive the explicit deny on deleting or shortening the audit mirror.",
+      "validation": [
+        {
+          "condition": "${length(var.protected_role_names) > 0}",
+          "error_message": "At least one role must carry the audit-mirror deny."
+        }
+      ]
+    }
+  }
+}

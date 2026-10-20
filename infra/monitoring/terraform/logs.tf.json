@@ -1,0 +1,32 @@
+{
+  "resource": {
+    "aws_cloudwatch_log_group": {
+      "report_worker": {
+        "name": "/${var.name_prefix}/report-worker",
+        "retention_in_days": "${var.report_worker_log_retention_days}",
+        "kms_key_id": "${aws_kms_key.logs.arn}"
+      },
+      "audit_mirror": {
+        "//": "AD-23: the 400-day copy of audit events; IAM below denies deleting it or shortening its retention.",
+        "name": "/${var.name_prefix}/audit-mirror",
+        "retention_in_days": 400,
+        "kms_key_id": "${aws_kms_key.logs.arn}",
+        "lifecycle": [{ "prevent_destroy": true }]
+      }
+    },
+    "aws_iam_policy": {
+      "audit_mirror_protect": {
+        "name": "${var.name_prefix}-audit-mirror-protect",
+        "description": "Denies deleting the audit mirror, changing its retention or key, and deleting the key that encrypts it.",
+        "policy": "${jsonencode({\"Version\": \"2012-10-17\", \"Statement\": [{\"Sid\": \"DenyAuditMirrorDeletion\", \"Effect\": \"Deny\", \"Action\": [\"logs:DeleteLogGroup\", \"logs:DeleteLogStream\", \"logs:PutRetentionPolicy\", \"logs:DeleteRetentionPolicy\", \"logs:DisassociateKmsKey\", \"logs:AssociateKmsKey\", \"logs:DeleteDataProtectionPolicy\"], \"Resource\": [\"${aws_cloudwatch_log_group.audit_mirror.arn}\", \"${aws_cloudwatch_log_group.audit_mirror.arn}:*\"]}, {\"Sid\": \"DenyMirrorKeyDeletion\", \"Effect\": \"Deny\", \"Action\": [\"kms:ScheduleKeyDeletion\", \"kms:DisableKey\", \"kms:PutKeyPolicy\"], \"Resource\": [\"${aws_kms_key.logs.arn}\"]}]})}"
+      }
+    },
+    "aws_iam_role_policy_attachment": {
+      "audit_mirror_protect": {
+        "for_each": "${toset(var.protected_role_names)}",
+        "role": "${each.value}",
+        "policy_arn": "${aws_iam_policy.audit_mirror_protect.arn}"
+      }
+    }
+  }
+}

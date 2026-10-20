@@ -1,0 +1,32 @@
+{
+  "//": "CMP-11 monitoring root module (AD-12, AD-23). State lives in the S3 backend; bucket, key and region come from -backend-config at init.",
+  "terraform": {
+    "required_version": ">= 1.7.0",
+    "required_providers": {
+      "aws": {
+        "source": "hashicorp/aws",
+        "version": "~> 5.80"
+      }
+    },
+    "backend": {
+      "s3": {
+        "use_fips_endpoint": true,
+        "encrypt": true
+      }
+    }
+  },
+  "provider": {
+    "aws": {
+      "region": "${var.region}",
+      "use_fips_endpoint": true
+    }
+  },
+  "data": {
+    "aws_partition": {
+      "current": {}
+    },
+    "aws_caller_identity": {
+      "current": {}
+    }
+  }
+}
