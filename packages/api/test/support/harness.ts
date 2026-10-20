@@ -1,13 +1,16 @@
-/* Builds the BFF wired to the fake Keycloak, an in-memory session store and audit log, and a clock the test moves. */
+/* Builds the BFF wired to the fake Keycloak, an in-memory session store and audit log, a fake directory, a recipient
+ * store whose reads and writes the test can break, and a clock the test moves. */
 import type { FastifyInstance, LightMyRequestResponse } from 'fastify'
 import { buildApp, LOGIN_COOKIE, SESSION_COOKIE } from '../../src/app.js'
 import { InMemoryAuditLog } from '../../src/audit.js'
 import type { Clock } from '../../src/clock.js'
 import { loadConfig } from '../../src/config.js'
 import { createOidcClient } from '../../src/auth/oidc.js'
+import { InMemoryMetrics, InMemoryRecipientStore, type Recipient } from '../../src/recipients/ports.js'
 import { InMemorySessionStore } from '../../src/session/store.js'
 import { initialVersion } from '../../src/settings/rules.js'
 import { InMemoryDetectionSettingsStore, InMemoryTenantAppDirectory } from '../../src/settings/store.js'
+import { FakeDirectory } from './fake-directory.js'
 import { FakeReportHistoryStore } from './report-history-store.js'
 import { CLIENT_ID, CLIENT_SECRET, createFakeKeycloak, ISSUER, type FakeUser } from './fake-keycloak.js'
 
@@ -33,6 +36,27 @@ export class TestClock implements Clock {
   }
 }
 
+export class TestRecipientStore extends InMemoryRecipientStore {
+  rejectReads = false
+  rejectWrites = false
+
+  #check(reject: boolean): void {
+    if (reject) throw new Error('connection terminated: recipient_store')
+  }
+  override async list(): Promise<Recipient[]> {
+    this.#check(this.rejectReads)
+    return super.list()
+  }
+  override async add(recipient: Recipient): Promise<void> {
+    this.#check(this.rejectWrites)
+    return super.add(recipient)
+  }
+  override async remove(id: string): Promise<void> {
+    this.#check(this.rejectWrites)
+    return super.remove(id)
+  }
+}
+
 export interface Harness {
   app: FastifyInstance
   clock: TestClock
@@ -40,6 +64,9 @@ export interface Harness {
   sessions: InMemorySessionStore
   audit: InMemoryAuditLog
   reports: FakeReportHistoryStore
+  directory: FakeDirectory
+  recipients: TestRecipientStore
+  metrics: InMemoryMetrics
 }
 
 export function createHarness(start = '2026-10-19T08:00:00.000Z'): Harness {
@@ -62,13 +89,29 @@ export function createHarness(start = '2026-10-19T08:00:00.000Z'): Harness {
     initialVersion('00000000-0000-4000-8000-000000000000', clock.now()),
   )
   const tenantApps = new InMemoryTenantAppDirectory([])
-  const app = buildApp({ config, clock, sessions, audit, oidc, reportHistory: reports, settings, tenantApps })
+  const directory = new FakeDirectory()
+  const recipients = new TestRecipientStore()
+  const metrics = new InMemoryMetrics()
+  const app = buildApp({
+    config,
+    clock,
+    sessions,
+    audit,
+    oidc,
+    reportHistory: reports,
+    settings,
+    tenantApps,
+    auditTrail: audit,
+    recipients,
+    directory,
+    metrics,
+  })
   /* Stands in for a report route of a later story, declared the way every report route must be. */
   app.get('/api/v1/reports/daily/:date', { config: { requiredRole: 'reader' } }, async () => ({
     date: '2026-10-18',
     totalSignIns: 42,
   }))
-  return { app, clock, keycloak, sessions, audit, reports }
+  return { app, clock, keycloak, sessions, audit, reports, directory, recipients, metrics }
 }
 
 export function setCookies(response: LightMyRequestResponse): string[] {
