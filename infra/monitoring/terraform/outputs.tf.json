@@ -1,0 +1,14 @@
+{
+  "output": {
+    "alarm_topic_arn": {
+      "description": "Subscribe the on-call endpoint here; every CMP-11 alarm notifies it.",
+      "value": "${aws_sns_topic.alarms.arn}"
+    },
+    "logs_kms_key_arn": { "value": "${aws_kms_key.logs.arn}" },
+    "report_worker_log_group_name": {
+      "description": "awslogs-group for the report-worker task definition (infra/platform).",
+      "value": "${aws_cloudwatch_log_group.report_worker.name}"
+    },
+    "audit_mirror_log_group_arn": { "value": "${aws_cloudwatch_log_group.audit_mirror.arn}" }
+  }
+}
