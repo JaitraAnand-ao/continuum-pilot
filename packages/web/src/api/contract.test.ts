@@ -15,6 +15,7 @@ import {
   SERVER_ERROR,
   UNAUTHENTICATED,
 } from '../testing/fixtures'
+import { BAD_REQUEST, HISTORY, NO_REPORTS_YET, NOT_A_READER } from '../testing/history'
 import { createApi } from './client'
 
 const contract = (name: string) =>
@@ -84,5 +85,39 @@ describe('IF-1 GET /auth/login problems', () => {
   it('the 503 problem shape matches the contract', () => {
     const unavailable = validatorFor('IF-1', '/auth/login', '503', 'application/problem+json')
     expect(unavailable(SERVER_ERROR), JSON.stringify(unavailable.errors)).toBe(true)
+  })
+})
+
+describe('IF-27 GET /api/v1/report-history fixtures', () => {
+  const ok = validatorFor('IF-27', '/api/v1/report-history', '200', 'application/json')
+  const problemFor = (status: string) =>
+    validatorFor('IF-27', '/api/v1/report-history', status, 'application/problem+json')
+
+  it.each([
+    ['90 days of history', HISTORY],
+    ['no reports yet', NO_REPORTS_YET],
+  ])('the %s 200 body matches the contract', (_, body) => {
+    expect(ok(body), JSON.stringify(ok.errors)).toBe(true)
+  })
+
+  it.each([
+    ['400', BAD_REQUEST],
+    ['401', UNAUTHENTICATED],
+    ['403', NOT_A_READER],
+    ['503', SERVER_ERROR],
+  ])('the %s problem matches the contract', (status, body) => {
+    const validate = problemFor(status)
+    expect(validate(body), JSON.stringify(validate.errors)).toBe(true)
+  })
+
+  it('a day carrying a figure the contract does not define breaks the contract', () => {
+    const [first, ...rest] = HISTORY.items
+    expect(ok({ ...HISTORY, items: [{ ...first, share: 0.5 }, ...rest] })).toBe(false)
+  })
+
+  it('the client hands every contract-valid body on unchanged', async () => {
+    for (const body of [HISTORY, NO_REPORTS_YET]) {
+      expect(await createApi(async () => json(200, body)).getReportHistory()).toEqual({ kind: 'ok', history: body })
+    }
   })
 })

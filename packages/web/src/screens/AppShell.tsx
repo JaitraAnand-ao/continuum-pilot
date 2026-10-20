@@ -1,8 +1,16 @@
 import type { MouseEvent } from 'react'
 import type { Me } from '../api/client'
+import type { HistoryActions, HistoryState } from '../history/controller'
+import { ReportHistoryPage } from '../history/ReportHistoryPage'
 import { FOCUS } from '../session/controller'
-import { isReader, navigationFor, roleNames } from '../session/roles'
+import { HISTORY_PAGE_PATH, isReader, navigationFor, roleNames } from '../session/roles'
 import { pageFor } from '../session/routes'
+
+/* The Report history page body and its actions, rendered only on that page and only for a reader. */
+export interface HistoryView {
+  state: HistoryState
+  actions: HistoryActions
+}
 
 export interface AppShellProps {
   me: Me
@@ -10,10 +18,11 @@ export interface AppShellProps {
   signOutFailed: boolean
   onNavigate: (path: string) => void
   onSignOut: () => void
+  history?: HistoryView | undefined
 }
 
 /* The signed-in frame: top bar, side navigation by role, and the page heading that takes focus. */
-export function AppShell({ me, path, signOutFailed, onNavigate, onSignOut }: AppShellProps) {
+export function AppShell({ me, path, signOutFailed, onNavigate, onSignOut, history }: AppShellProps) {
   const page = pageFor(path)
   const allowed = !page.requiresReader || isReader(me.roles)
   const follow = (target: string) => (event: MouseEvent<HTMLAnchorElement>) => {
@@ -45,7 +54,7 @@ export function AppShell({ me, path, signOutFailed, onNavigate, onSignOut }: App
                 <li key={item.path}>
                   <a
                     href={item.path}
-                    aria-current={item.path === path ? 'page' : undefined}
+                    aria-current={item.path === path.split('?', 1)[0] ? 'page' : undefined}
                     onClick={follow(item.path)}
                   >
                     {item.label}
@@ -60,6 +69,9 @@ export function AppShell({ me, path, signOutFailed, onNavigate, onSignOut }: App
         <h1 id={FOCUS.pageHeading} tabIndex={-1}>
           {allowed ? page.heading : "This page isn't available"}
         </h1>
+        {allowed && path === HISTORY_PAGE_PATH && history !== undefined && (
+          <ReportHistoryPage state={history.state} actions={history.actions} onOpenDay={onNavigate} />
+        )}
       </main>
     </div>
   )

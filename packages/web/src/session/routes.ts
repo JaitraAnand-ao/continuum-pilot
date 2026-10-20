@@ -1,4 +1,4 @@
-import { REPORTS_GROUP } from './roles'
+import { DAILY_REPORT_PATH, REPORTS_GROUP } from './roles'
 
 export const APP_NAME = 'Entra Sign-In Reports'
 
@@ -17,7 +17,12 @@ export interface Page {
 
 export const NOT_AVAILABLE: Page = { path: '', heading: "This page isn't available", requiresReader: false }
 
+/* The Daily report for one stored day, as Report history links it (IF-28). */
+export const dailyReportPath = (reportDate: string): string =>
+  `${DAILY_REPORT_PATH}?${new URLSearchParams({ date: reportDate }).toString()}`
+
 export function pageFor(path: string): Page {
-  const item = REPORTS_GROUP.items.find((candidate) => candidate.path === path)
-  return item ? { path: item.path, heading: item.label, requiresReader: true } : { ...NOT_AVAILABLE, path }
+  const pathname = path.split('?', 1)[0]
+  const item = REPORTS_GROUP.items.find((candidate) => candidate.path === pathname)
+  return item ? { path, heading: item.label, requiresReader: true } : { ...NOT_AVAILABLE, path }
 }

@@ -12,13 +12,14 @@ export interface NavGroup {
 }
 
 export const DAILY_REPORT_PATH = '/reports/daily'
+export const HISTORY_PAGE_PATH = '/reports/history'
 
 export const REPORTS_GROUP: NavGroup = {
   label: 'REPORTS',
   items: [
     { label: 'Daily report', path: DAILY_REPORT_PATH },
     { label: 'Suspicious activity', path: '/reports/suspicious' },
-    { label: 'Report history', path: '/reports/history' },
+    { label: 'Report history', path: HISTORY_PAGE_PATH },
   ],
 }
 
