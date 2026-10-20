@@ -15,6 +15,20 @@
       "when": 1792449374431,
       "tag": "0001_audit_chain_and_grants",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1792460742921,
+      "tag": "0002_report_and_not_generated",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1792460749166,
+      "tag": "0003_report_immutability_and_grants",
+      "breakpoints": true
     }
   ]
 }
