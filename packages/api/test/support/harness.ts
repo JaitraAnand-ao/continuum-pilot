@@ -6,6 +6,8 @@ import type { Clock } from '../../src/clock.js'
 import { loadConfig } from '../../src/config.js'
 import { createOidcClient } from '../../src/auth/oidc.js'
 import { InMemorySessionStore } from '../../src/session/store.js'
+import { initialVersion } from '../../src/settings/rules.js'
+import { InMemoryDetectionSettingsStore, InMemoryTenantAppDirectory } from '../../src/settings/store.js'
 import { FakeReportHistoryStore } from './report-history-store.js'
 import { CLIENT_ID, CLIENT_SECRET, createFakeKeycloak, ISSUER, type FakeUser } from './fake-keycloak.js'
 
@@ -56,7 +58,11 @@ export function createHarness(start = '2026-10-19T08:00:00.000Z'): Harness {
     fetch: keycloak.fetch,
     clock,
   })
-  const app = buildApp({ config, clock, sessions, audit, oidc, reportHistory: reports })
+  const settings = new InMemoryDetectionSettingsStore(
+    initialVersion('00000000-0000-4000-8000-000000000000', clock.now()),
+  )
+  const tenantApps = new InMemoryTenantAppDirectory([])
+  const app = buildApp({ config, clock, sessions, audit, oidc, reportHistory: reports, settings, tenantApps })
   /* Stands in for a report route of a later story, declared the way every report route must be. */
   app.get('/api/v1/reports/daily/:date', { config: { requiredRole: 'reader' } }, async () => ({
     date: '2026-10-18',

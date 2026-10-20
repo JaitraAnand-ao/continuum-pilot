@@ -20,6 +20,8 @@ import {
 } from './session/policy.js'
 import { SessionService } from './session/service.js'
 import type { SessionRecord, SessionStore } from './session/store.js'
+import { registerDetectionSettings } from './settings/routes.js'
+import type { DetectionSettingsStore, TenantAppDirectory } from './settings/store.js'
 
 export { LOGIN_COOKIE, SESSION_COOKIE } from './http/cookies.js'
 
@@ -42,6 +44,8 @@ export interface AppDeps {
   audit: AuditLog
   oidc: OidcClient
   reportHistory: ReportHistoryStore
+  settings: DetectionSettingsStore
+  tenantApps: TenantAppDirectory
 }
 
 interface LoginTransaction {
@@ -293,6 +297,8 @@ export function buildApp(deps: AppDeps): FastifyInstance {
   )
 
   registerReportHistory(app, { clock, store: deps.reportHistory })
+
+  registerDetectionSettings(app, { clock, audit, settings: deps.settings, tenantApps: deps.tenantApps })
 
   return app
 }
