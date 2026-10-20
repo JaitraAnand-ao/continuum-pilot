@@ -137,7 +137,9 @@ describe.skipIf(noDatabase)('report storage (ST-2)', () => {
     })
 
     it('rejects TRUNCATE of the reports', async () => {
-      expect(await asOwner((c) => sqlState(() => c.query('TRUNCATE report')))).toBe(RAISE_EXCEPTION)
+      /* ST-3's stored figures reference the report, so a plain TRUNCATE fails first; with CASCADE the trigger rejects it. */
+      expect(await asOwner((c) => sqlState(() => c.query('TRUNCATE report')))).toBe('0A000')
+      expect(await asOwner((c) => sqlState(() => c.query('TRUNCATE report CASCADE')))).toBe(RAISE_EXCEPTION)
     })
   })
 

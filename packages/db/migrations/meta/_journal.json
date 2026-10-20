@@ -29,6 +29,20 @@
       "when": 1792460749166,
       "tag": "0003_report_immutability_and_grants",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1792484188883,
+      "tag": "0004_report_figures",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1792484193490,
+      "tag": "0005_report_figures_reconcile_and_grants",
+      "breakpoints": true
     }
   ]
 }
