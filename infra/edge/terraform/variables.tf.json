@@ -1,0 +1,86 @@
+{
+  "variable": {
+    "region": {
+      "type": "string",
+      "description": "AWS region; GovCloud (us-gov-west-1, us-gov-east-1) and commercial regions are both valid.",
+      "validation": [
+        {
+          "condition": "${can(regex(\"^(us-gov-(west|east)-1|[a-z]{2}(-[a-z]+)+-[0-9])$\", var.region))}",
+          "error_message": "region must be an AWS region name such as us-gov-west-1."
+        }
+      ]
+    },
+    "name_prefix": {
+      "type": "string",
+      "default": "signin-reports",
+      "description": "Prefix for resource names; target group names allow at most 32 characters in total.",
+      "validation": [
+        {
+          "condition": "${can(regex(\"^[a-z][a-z0-9-]{1,18}$\", var.name_prefix))}",
+          "error_message": "name_prefix must be 2-19 lower-case letters, digits or hyphens."
+        }
+      ]
+    },
+    "vpc_id": {
+      "type": "string",
+      "description": "VPC of the ECS services (infra/platform)."
+    },
+    "public_subnet_ids": {
+      "type": "list(string)",
+      "description": "Public subnets in at least two availability zones for the ALB.",
+      "validation": [
+        {
+          "condition": "${length(var.public_subnet_ids) >= 2}",
+          "error_message": "An ALB needs subnets in at least two availability zones."
+        }
+      ]
+    },
+    "ingress_cidrs": {
+      "type": "list(string)",
+      "default": ["0.0.0.0/0"],
+      "description": "IPv4 ranges allowed to reach the listener on 443.",
+      "validation": [
+        {
+          "condition": "${length(var.ingress_cidrs) > 0 && alltrue([for c in var.ingress_cidrs : can(cidrhost(c, 0))])}",
+          "error_message": "ingress_cidrs must be a non-empty list of IPv4 CIDR blocks."
+        }
+      ]
+    },
+    "certificate_arn": {
+      "type": "string",
+      "description": "ACM certificate for the dashboard host name, in this partition and region."
+    },
+    "access_logs_bucket": {
+      "type": "string",
+      "description": "S3 bucket receiving ALB access logs (infra/monitoring)."
+    },
+    "api_security_group_id": {
+      "type": "string",
+      "description": "Security group of the api ECS tasks (infra/platform)."
+    },
+    "keycloak_security_group_id": {
+      "type": "string",
+      "description": "Security group of the Keycloak ECS tasks (infra/platform)."
+    },
+    "api_port": {
+      "type": "number",
+      "default": 8443,
+      "description": "TLS port the api task listens on; the ALB re-encrypts to it."
+    },
+    "api_health_path": {
+      "type": "string",
+      "default": "/healthz",
+      "description": "Readiness path of the api."
+    },
+    "keycloak_port": {
+      "type": "number",
+      "default": 8443,
+      "description": "Keycloak HTTPS port; the ALB re-encrypts to it."
+    },
+    "keycloak_management_port": {
+      "type": "number",
+      "default": 9000,
+      "description": "Keycloak management interface (health). Health-checked only; no listener rule routes to it."
+    }
+  }
+}
