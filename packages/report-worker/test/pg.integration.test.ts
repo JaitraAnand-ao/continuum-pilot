@@ -11,7 +11,7 @@ import {
   snapshotHashInput,
   startReportWorker,
 } from '../src/index.js'
-import { FakeClock, FakeGraph, RecordingMetrics, riskDetection, signIn } from './support.js'
+import { FakeClock, FakeGraph, RecordingMetrics, riskDetection, riskyUser, signIn } from './support.js'
 
 const databaseUrl = process.env.AGENTX_TEST_DATABASE_URL
 
@@ -137,6 +137,70 @@ describe.skipIf(!databaseUrl)('report worker on real Postgres', () => {
     clock.set('2026-10-10T09:00:00.000Z')
     await generateReport('2026-10-09', { graph: late, store, metrics: new RecordingMetrics(), clock })
     expect((await store.findReport('2026-10-09'))!.figures).toEqual(stored!.figures)
+  })
+
+  it('stores the risky users and the risk flags with the report and reads them back as hashed (ST-9 AC-1, AC-4, AC-5)', async () => {
+    const graph = new FakeGraph(
+      [
+        signIn({
+          id: 'si-chen',
+          createdDateTime: '2026-10-03T10:00:00.000Z',
+          userId: 'u-chen',
+          riskLevelAggregated: 'high',
+          location: null,
+        }),
+      ],
+      [
+        riskDetection({
+          id: 'rd-1',
+          userId: 'u-chen',
+          riskLevel: 'high',
+          detectedDateTime: '2026-10-03T09:00:00.000Z',
+        }),
+      ],
+      1000,
+      [riskyUser({ id: 'u-chen', riskState: 'confirmedCompromised', riskLevel: 'medium' })],
+    )
+    const outcome = await generateReport('2026-10-03', {
+      graph,
+      store,
+      metrics: new RecordingMetrics(),
+      clock: new FakeClock('2026-10-04T02:00:00.000Z'),
+    })
+    if (outcome.kind !== 'published') throw new Error(`expected published, got ${outcome.kind}`)
+
+    const stored = await store.findReport('2026-10-03')
+    expect(stored).toEqual(outcome.report)
+    expect(contentHash(snapshotHashInput(stored!))).toBe(outcome.report.contentHash)
+    expect(stored!.riskyUsers.map((user) => user.id)).toEqual(['u-chen'])
+    if (!stored!.riskFlags.riskySignIns.evaluated || !stored!.riskFlags.riskyUsers.evaluated)
+      throw new Error('expected both categories evaluated')
+    expect(stored!.riskFlags.riskySignIns.flags[0]!.evidence.location).toBe('not recorded')
+    expect(stored!.riskFlags.riskyUsers.flags[0]).toMatchObject({
+      userId: 'u-chen',
+      detections: [{ id: 'rd-1' }],
+      signInIds: ['si-chen'],
+    })
+  })
+
+  it('stores Identity Protection categories as not evaluated when it could not be read (ST-9 AC-7)', async () => {
+    const graph = new FakeGraph([
+      signIn({ id: 'a', createdDateTime: '2026-10-08T10:00:00.000Z', riskLevelAggregated: 'high' }),
+    ])
+    graph.failRisk = 'always'
+    const outcome = await generateReport('2026-10-08', {
+      graph,
+      store,
+      metrics: new RecordingMetrics(),
+      clock: new FakeClock('2026-10-09T06:59:00.000Z'),
+    })
+    expect(outcome.kind).toBe('published')
+    const stored = await store.findReport('2026-10-08')
+    expect(stored!.status).toBe('incomplete')
+    expect(stored!.riskFlags).toEqual({
+      riskySignIns: { evaluated: false, missingSources: ['identityProtection.riskDetections'] },
+      riskyUsers: { evaluated: false, missingSources: ['identityProtection.riskDetections'] },
+    })
   })
 
   it('records a not-generated day and returns nothing for an unknown day (AC-5)', async () => {

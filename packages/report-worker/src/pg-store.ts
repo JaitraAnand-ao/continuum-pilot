@@ -1,5 +1,13 @@
 import type { DailyFigures } from './figures.js'
-import type { NotGeneratedDay, PublishedReport, RiskDetection, SignIn, SourceId } from './model.js'
+import type {
+  NotGeneratedDay,
+  PublishedReport,
+  RiskDetection,
+  RiskFlags,
+  RiskyUser,
+  SignIn,
+  SourceId,
+} from './model.js'
 import type { PublishResult, ReportStore } from './ports.js'
 
 /* The executor pg-boss exposes through boss.getDb(), so the worker shares one pool with its queue. */
@@ -48,7 +56,13 @@ export class PgReportStore implements ReportStore {
     const { rows } = await this.db.executeSql(SELECT_REPORT, [reportDate])
     const row = rows[0]
     if (!row) return undefined
-    const snapshot = row.snapshot as { signIns: SignIn[]; riskDetections: RiskDetection[]; figures: DailyFigures }
+    const snapshot = row.snapshot as {
+      signIns: SignIn[]
+      riskDetections: RiskDetection[]
+      riskyUsers: RiskyUser[]
+      riskFlags: RiskFlags
+      figures: DailyFigures
+    }
     return {
       reportDate: row.report_date as string,
       windowStart: row.window_start as string,
@@ -59,6 +73,8 @@ export class PgReportStore implements ReportStore {
       figures: snapshot.figures,
       signIns: snapshot.signIns,
       riskDetections: snapshot.riskDetections,
+      riskyUsers: snapshot.riskyUsers,
+      riskFlags: snapshot.riskFlags,
       contentHash: row.content_hash as string,
       publishedAt: row.published_at as string,
     }
@@ -74,7 +90,13 @@ export class PgReportStore implements ReportStore {
       report.totals.total,
       report.totals.successful,
       report.totals.failed,
-      JSON.stringify({ signIns: report.signIns, riskDetections: report.riskDetections, figures: report.figures }),
+      JSON.stringify({
+        signIns: report.signIns,
+        riskDetections: report.riskDetections,
+        riskyUsers: report.riskyUsers,
+        riskFlags: report.riskFlags,
+        figures: report.figures,
+      }),
       report.contentHash,
       report.publishedAt,
     ])

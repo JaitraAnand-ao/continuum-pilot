@@ -16,7 +16,8 @@ export interface DeviceDetail {
   deviceId: string
   operatingSystem: string
   browser: string
-  isCompliant: boolean
+  /* Null when Entra did not record the device's compliance. */
+  isCompliant: boolean | null
   isManaged: boolean
 }
 
@@ -31,6 +32,21 @@ export interface SignIn {
   appDisplayName: string
   conditionalAccessPolicies: readonly ConditionalAccessPolicyResult[]
   deviceDetail: DeviceDetail
+  /* The evidence a risky sign-in flag carries. Entra may leave any of these null or empty. */
+  correlationId?: string | null
+  userId?: string | null
+  userPrincipalName?: string | null
+  ipAddress?: string | null
+  location?: SignInLocation | null
+  /* Kept as Graph's string (low, medium, high, hidden, none, unknownFutureValue). */
+  riskLevelAggregated?: string | null
+  conditionalAccessStatus?: string | null
+}
+
+export interface SignInLocation {
+  city?: string | null
+  state?: string | null
+  countryOrRegion?: string | null
 }
 
 export interface RiskDetection {
@@ -38,6 +54,60 @@ export interface RiskDetection {
   detectedDateTime: string
   riskLevel: string
   riskEventType: string
+  userId?: string | null
+}
+
+/* A user Identity Protection holds risk state for; riskState and riskLevel are kept as Graph's strings. */
+export interface RiskyUser {
+  id: string
+  userPrincipalName?: string | null
+  riskState: string
+  riskLevel: string
+  riskLastUpdatedDateTime?: string | null
+}
+
+/* What an evidence field holds when Entra left it empty (AC-6). */
+export const NOT_RECORDED = 'not recorded'
+
+export const RISK_TRIGGER = 'medium or higher'
+
+export const RISKY_USER_TRIGGER = {
+  riskStates: ['atRisk', 'confirmedCompromised'],
+  riskLevel: RISK_TRIGGER,
+} as const
+
+export interface RiskySignInFlag {
+  signInId: string
+  trigger: typeof RISK_TRIGGER
+  observedRiskLevel: string
+  evidence: {
+    requestId: string
+    timestamp: string
+    user: string
+    app: string
+    ipAddress: string
+    location: string
+    deviceCompliance: string
+    conditionalAccessResult: string
+  }
+}
+
+export interface RiskyUserFlag {
+  userId: string
+  user: string
+  trigger: typeof RISKY_USER_TRIGGER
+  riskState: string
+  riskLevel: string
+  detections: { id: string; type: string; riskLevel: string; detectedDateTime: string }[]
+  signInIds: string[]
+}
+
+/* A category whose sources were not all collected is not evaluated: it has no flags, so no count, never a quiet 0. */
+export type RiskCategory<F> = { evaluated: true; flags: F[] } | { evaluated: false; missingSources: SourceId[] }
+
+export interface RiskFlags {
+  riskySignIns: RiskCategory<RiskySignInFlag>
+  riskyUsers: RiskCategory<RiskyUserFlag>
 }
 
 export const SOURCES = [
@@ -45,6 +115,7 @@ export const SOURCES = [
   'signIns.nonInteractiveUser',
   'signIns.servicePrincipal',
   'signIns.managedIdentity',
+  /* Identity Protection as one source: the day's risk detections and the risky users, collected together. */
   'identityProtection.riskDetections',
 ] as const
 export type SourceId = (typeof SOURCES)[number]
@@ -81,6 +152,8 @@ export interface PublishedReport {
   figures: DailyFigures
   signIns: SignIn[]
   riskDetections: RiskDetection[]
+  riskyUsers: RiskyUser[]
+  riskFlags: RiskFlags
   contentHash: string
   publishedAt: string
 }

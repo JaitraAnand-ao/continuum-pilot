@@ -1,4 +1,12 @@
-import type { NotGeneratedDay, PublishedReport, ReportWindow, RiskDetection, SignIn, SignInType } from './model.js'
+import type {
+  NotGeneratedDay,
+  PublishedReport,
+  ReportWindow,
+  RiskDetection,
+  RiskyUser,
+  SignIn,
+  SignInType,
+} from './model.js'
 
 export interface Clock {
   now(): Date
@@ -14,6 +22,8 @@ export interface Page<T> {
 export interface GraphReadPort {
   signInsPage(query: { type: SignInType; window: ReportWindow; cursor: string | undefined }): Promise<Page<SignIn>>
   riskDetectionsPage(query: { window: ReportWindow; cursor: string | undefined }): Promise<Page<RiskDetection>>
+  /* Risky users carry their current state, not a dated event, so the query has no window. */
+  riskyUsersPage(query: { cursor: string | undefined }): Promise<Page<RiskyUser>>
 }
 
 /* Raised by the adapter for a 429; any other rejection is a transient failure. */

@@ -29,6 +29,6 @@ describe('AC-8: the job changes nothing in the tenant', () => {
       metrics: new RecordingMetrics(),
       clock: new FakeClock('2026-10-12T02:00:00.000Z'),
     })
-    expect([...touched].sort()).toEqual(['riskDetectionsPage', 'signInsPage'])
+    expect([...touched].sort()).toEqual(['riskDetectionsPage', 'riskyUsersPage', 'signInsPage'])
   })
 })
