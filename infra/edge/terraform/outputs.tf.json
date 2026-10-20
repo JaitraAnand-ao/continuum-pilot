@@ -1,0 +1,12 @@
+{
+  "output": {
+    "alb_dns_name": { "value": "${aws_lb.edge.dns_name}" },
+    "alb_zone_id": { "value": "${aws_lb.edge.zone_id}" },
+    "alb_security_group_id": {
+      "description": "infra/platform admits this group on the task ports.",
+      "value": "${aws_security_group.alb.id}"
+    },
+    "api_target_group_arn": { "value": "${aws_lb_target_group.api.arn}" },
+    "keycloak_target_group_arn": { "value": "${aws_lb_target_group.keycloak.arn}" }
+  }
+}
