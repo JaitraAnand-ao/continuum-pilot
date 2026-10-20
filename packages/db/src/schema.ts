@@ -10,6 +10,7 @@ import {
   pgTable,
   text,
   timestamp,
+  uniqueIndex,
   uuid,
 } from 'drizzle-orm/pg-core'
 
@@ -48,7 +49,14 @@ export const sessions = pgTable(
   ],
 )
 
-export const AUDIT_EVENT_TYPES = ['access_denied'] as const
+export const AUDIT_EVENT_TYPES = [
+  'access_denied',
+  'recipient.check_passed',
+  'recipient.check_rejected',
+  'recipient.check_failed',
+  'recipient.proposed',
+  'recipient.removed',
+] as const
 export type AuditEventType = (typeof AUDIT_EVENT_TYPES)[number]
 
 /* Append-only audit trail. prev_hash and hash are set by a trigger that chains each row to the one before it;
@@ -67,7 +75,10 @@ export const auditEvents = pgTable(
     hash: bytea('hash').notNull(),
   },
   (t) => [
-    check('audit_events_event_type_known', sql`${t.eventType} IN ('access_denied')`),
+    check(
+      'audit_events_event_type_known',
+      sql`${t.eventType} IN ('access_denied', 'recipient.check_passed', 'recipient.check_rejected', 'recipient.check_failed', 'recipient.proposed', 'recipient.removed')`,
+    ),
     check('audit_events_trace_id_w3c', sql`${t.traceId} ~ '^[0-9a-f]{32}$'`),
     index('audit_events_occurred_at_idx').on(t.occurredAt),
     index('audit_events_actor_oid_idx').on(t.actorOid),
@@ -142,5 +153,51 @@ export const reportNotGenerated = pgTable(
   (t) => [
     check('report_not_generated_missing_sources_present', sql`cardinality(${t.missingSources}) > 0`),
     check('report_not_generated_missing_sources_known', sql`${t.missingSources} <@ ${KNOWN_SOURCES}`),
+  ],
+)
+
+/* ST-18: who receives the daily email. A person or a distribution group is stored only after it passed the
+ * reader-group check, waiting for a second administrator's approval; removal deletes the row at once. Only the
+ * approval of a waiting recipient may change a row (trigger, migration 0005), and the approver is never the
+ * administrator who proposed it (four-eyes, CHECK). */
+export const RECIPIENT_KINDS = ['person', 'group'] as const
+export type RecipientKind = (typeof RECIPIENT_KINDS)[number]
+
+export const RECIPIENT_STATUSES = ['pending_approval', 'active'] as const
+export type RecipientStatus = (typeof RECIPIENT_STATUSES)[number]
+
+export const emailRecipients = pgTable(
+  'email_recipient',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    kind: text('kind').$type<RecipientKind>().notNull(),
+    entraObjectId: uuid('entra_object_id').notNull(),
+    displayName: text('display_name').notNull(),
+    address: text('address').notNull(),
+    memberCount: integer('member_count'),
+    status: text('status').$type<RecipientStatus>().notNull(),
+    addedByOid: uuid('added_by_oid').notNull(),
+    addedByName: text('added_by_name').notNull(),
+    proposedAt: instant('proposed_at').notNull(),
+    approvedByOid: uuid('approved_by_oid'),
+    approvedByName: text('approved_by_name'),
+    approvedAt: instant('approved_at'),
+  },
+  (t) => [
+    check('email_recipient_kind_known', sql`${t.kind} IN ('person', 'group')`),
+    check('email_recipient_status_known', sql`${t.status} IN ('pending_approval', 'active')`),
+    check(
+      'email_recipient_member_count_matches_kind',
+      sql`CASE ${t.kind} WHEN 'group' THEN coalesce(${t.memberCount} >= 1, false) ELSE ${t.memberCount} IS NULL END`,
+    ),
+    check('email_recipient_address_shape', sql`${t.address} ~ '^[^@[:space:]]+@[^@[:space:]]+$'`),
+    check(
+      'email_recipient_status_matches_approval',
+      sql`CASE ${t.status} WHEN 'active' THEN ${t.approvedByOid} IS NOT NULL AND ${t.approvedByName} IS NOT NULL AND ${t.approvedAt} IS NOT NULL ELSE ${t.approvedByOid} IS NULL AND ${t.approvedByName} IS NULL AND ${t.approvedAt} IS NULL END`,
+    ),
+    check('email_recipient_approver_is_not_proposer', sql`${t.approvedByOid} <> ${t.addedByOid}`),
+    check('email_recipient_approval_after_proposal', sql`${t.approvedAt} >= ${t.proposedAt}`),
+    uniqueIndex('email_recipient_entra_object_id_key').on(t.entraObjectId),
+    index('email_recipient_status_idx').on(t.status),
   ],
 )

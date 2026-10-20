@@ -10,12 +10,18 @@ export function connect(client: pg.Pool | pg.PoolClient | pg.Client): Database {
 }
 
 /* Drizzle's query error repeats the bound parameters (sealed tokens, account names) in its message; callers get the
- * driver's error instead, which carries the SQLSTATE and constraint but no values. */
+ * driver's error instead, which carries the SQLSTATE and constraint but no values. Its detail and where, which can
+ * quote the failing row or key (addresses, names), are dropped too. */
 export async function withoutParameters<T>(run: () => Promise<T>): Promise<T> {
   try {
     return await run()
   } catch (error) {
-    if (error instanceof DrizzleQueryError && error.cause) throw error.cause
+    if (error instanceof DrizzleQueryError && error.cause) {
+      const cause = error.cause as Error & { detail?: string; where?: string }
+      delete cause.detail
+      delete cause.where
+      throw cause
+    }
     throw error
   }
 }
