@@ -4,5 +4,14 @@ export { InMemoryAuditLog, type AuditEvent, type AuditLog } from './audit.js'
 export { createOidcClient, OidcRejectedError, OidcUnavailableError, type OidcClient } from './auth/oidc.js'
 export { ROLES, type Role } from './auth/roles.js'
 export { systemClock, type Clock } from './clock.js'
+export {
+  buildHistory,
+  filterHistory,
+  historyRange,
+  type DayStatus,
+  type History,
+  type HistoryDay,
+} from './history/rules.js'
+export type { ReportHistoryStore, StoredDays, StoredReportSummary } from './history/store.js'
 export { loadConfig, Secret, type Config } from './config.js'
 export { InMemorySessionStore, type SessionRecord, type SessionStore } from './session/store.js'

@@ -6,6 +6,7 @@ import type { Clock } from '../../src/clock.js'
 import { loadConfig } from '../../src/config.js'
 import { createOidcClient } from '../../src/auth/oidc.js'
 import { InMemorySessionStore } from '../../src/session/store.js'
+import { FakeReportHistoryStore } from './report-history-store.js'
 import { CLIENT_ID, CLIENT_SECRET, createFakeKeycloak, ISSUER, type FakeUser } from './fake-keycloak.js'
 
 export const ORIGIN = 'https://reports.contoso.test'
@@ -36,6 +37,7 @@ export interface Harness {
   keycloak: ReturnType<typeof createFakeKeycloak>
   sessions: InMemorySessionStore
   audit: InMemoryAuditLog
+  reports: FakeReportHistoryStore
 }
 
 export function createHarness(start = '2026-10-19T08:00:00.000Z'): Harness {
@@ -44,6 +46,7 @@ export function createHarness(start = '2026-10-19T08:00:00.000Z'): Harness {
   const config = loadConfig(TEST_ENV)
   const sessions = new InMemorySessionStore()
   const audit = new InMemoryAuditLog()
+  const reports = new FakeReportHistoryStore()
   const oidc = createOidcClient({
     issuer: config.oidc.issuer,
     clientId: config.oidc.clientId,
@@ -53,13 +56,13 @@ export function createHarness(start = '2026-10-19T08:00:00.000Z'): Harness {
     fetch: keycloak.fetch,
     clock,
   })
-  const app = buildApp({ config, clock, sessions, audit, oidc })
+  const app = buildApp({ config, clock, sessions, audit, oidc, reportHistory: reports })
   /* Stands in for a report route of a later story, declared the way every report route must be. */
   app.get('/api/v1/reports/daily/:date', { config: { requiredRole: 'reader' } }, async () => ({
     date: '2026-10-18',
     totalSignIns: 42,
   }))
-  return { app, clock, keycloak, sessions, audit }
+  return { app, clock, keycloak, sessions, audit, reports }
 }
 
 export function setCookies(response: LightMyRequestResponse): string[] {
